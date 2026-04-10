@@ -6,7 +6,11 @@
       "use": "@vercel/python"
     },
     {
-      "src": "fe/*",
+      "src": "fe/**/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "public/**/*",
       "use": "@vercel/static"
     }
   ],
@@ -26,6 +30,10 @@
     {
       "src": "/",
       "dest": "fe/index.html"
+    },
+    {
+      "src": "/public/(.*)",
+      "dest": "public/$1"
     },
     {
       "src": "/(.*)",
