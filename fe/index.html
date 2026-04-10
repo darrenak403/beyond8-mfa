@@ -525,7 +525,7 @@
     <header>
       <div class="header-left">
         <img
-          src="logo.png"
+          src="/public/logo.png"
           alt="Infinity Logo"
           class="header-logo"
           onerror="this.style.display = 'none'"
@@ -662,7 +662,7 @@
 
       function getCookieToken() {
         const cookies = document.cookie.split(';')
-        const authCookie = cookies.find((c) => c.trim().startsWith('admin_token='))
+        const authCookie = cookies.find((c) => c.trim().startsWith('auth_token='))
         return authCookie ? authCookie.split('=')[1] : null
       }
 
@@ -723,9 +723,13 @@
 
           if (response.ok) {
             const data = await response.json()
-            const token = data.token
+            const token = data.data?.access_token
 
-            document.cookie = `admin_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}`
+            if (!token) {
+              throw new Error('Không nhận được access token từ backend')
+            }
+
+            document.cookie = `auth_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}`
             errorEl.style.display = 'none'
 
             document.getElementById('login-section').style.opacity = '0'
@@ -753,7 +757,7 @@
       function handleLogout() {
         document.getElementById('otp-section').style.opacity = '0'
         setTimeout(() => {
-          document.cookie = `admin_token=; path=/; max-age=0`
+          document.cookie = `auth_token=; path=/; max-age=0`
           document.getElementById('email-input').value = ''
           document.getElementById('otp-section').style.opacity = '1'
           showLoginScreen()
@@ -783,7 +787,7 @@
         try {
           const response = await fetch(API_URL, {
             method: 'GET',
-            headers: {'x-admin-token': token},
+            headers: {Authorization: `Bearer ${token}`},
           })
 
           if (!response.ok) {
@@ -795,6 +799,7 @@
           }
 
           const data = await response.json()
+          const otpPayload = data.data
 
           if (isInitial) {
             document.getElementById('loading-text').style.display = 'none'
@@ -805,8 +810,8 @@
           }
 
           document.getElementById('otp-display').style.opacity = '1'
-          document.getElementById('otp-display').innerText = data.otp
-          startCountdown(data.expires_in)
+          document.getElementById('otp-display').innerText = otpPayload.otp
+          startCountdown(otpPayload.expires_in)
         } catch (error) {
           if (isInitial) document.getElementById('loading-text').style.display = 'none'
           document.getElementById('otp-display').style.opacity = '1'

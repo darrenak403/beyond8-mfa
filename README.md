@@ -1,169 +1,238 @@
-# Beyond8 Auth — Hệ thống Cấp phát OTP
+# Beyond8 Auth API - Tài liệu Flow Mới Cho FE
 
-Dịch vụ xác thực nội bộ dựa trên **TOTP (Time-based One-Time Password)** với chu kỳ 60 giây. Admin đăng nhập bằng email, lấy mã OTP và chia sẻ cho người dùng để xác minh quyền truy cập. Hệ thống _không sử dụng database_, hoàn toàn stateless và được triển khai trên **Vercel**.
+Tài liệu này mô tả contract mới giữa backend và frontend để team FE implement.
 
----
+## 1. Mục tiêu flow mới
 
-## Cấu trúc thư mục
+- Chỉ có 1 backend auth/otp dùng chung.
+- Trang admin dùng để login và lấy OTP hiện hành.
+- Hệ thống FE học viên gọi verify OTP để nhận token truy cập khóa học.
+- OTP là one-time-use: verify thành công thì OTP cũ bị consume, OTP mới được tạo ngay.
+- Không còn `course_key`, không còn `x-admin-token`, không còn API legacy kiểu query OTP cũ.
 
-```
-learning_source_auth/
-├── be/
-│   └── index.py          # FastAPI backend — API sinh và xác thực OTP
-├── fe/
-│   └── index.html        # Frontend Admin — giao diện đăng nhập & hiển thị OTP
-├── public/
-│   └── logo.png          # Logo thương hiệu
-├── .env                  # Biến môi trường (local only, không commit)
-├── .gitignore
-├── requirements.txt      # Thư viện Python
-└── vercel.json           # Cấu hình routing Vercel
-```
+## 2. Base URL
 
----
+- Local: `http://127.0.0.1:3636`
+- API prefix: `/api`
+- Swagger: `http://127.0.0.1:3636/api/docs`
 
-## Yêu cầu hệ thống
+## 3. Chuẩn response chung
 
-- Python `>= 3.9`
-- pip
+Tất cả endpoint trả theo envelope:
 
----
-
-## Cài đặt & Chạy Local
-
-### 1. Cài đặt thư viện
-
-```bash
-pip install -r requirements.txt
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "Success",
+  "code": 200
+}
 ```
 
-### 2. Tạo file `.env`
+Lưu ý cho FE:
 
-Tạo file `.env` ở thư mục gốc (hoặc sao chép từ `.env.example` nếu có):
+- `success` phản ánh mức HTTP xử lý request.
+- Với verify OTP, trạng thái đúng/sai OTP nằm ở `data.valid`.
+
+## 4. Flow A - Admin FE
+
+### Bước A1: Login admin
+
+Endpoint:
+
+- `POST /api/auth/login`
+- `POST /api/auth/signin` (alias)
+
+Body:
+
+```json
+{
+  "email": "admin@gmail.com"
+}
+```
+
+Response thành công:
+
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "<jwt_admin>",
+    "token_type": "bearer",
+    "role": "admin",
+    "email": "admin@gmail.com"
+  },
+  "message": "Đăng nhập thành công",
+  "code": 200
+}
+```
+
+Lỗi thường gặp:
+
+- `401`: email không có quyền admin.
+- `422`: body sai format email.
+
+### Bước A2: Lấy OTP hiện hành
+
+Endpoint:
+
+- `GET /api/otp/generate`
+
+Header bắt buộc:
+
+- `Authorization: Bearer <jwt_admin>`
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "otp": "BY8-ABCD-EFGH-JKLM",
+    "expires_in": 60,
+    "version": 12
+  },
+  "message": "Lấy OTP thành công",
+  "code": 200
+}
+```
+
+Lỗi thường gặp:
+
+- `401`: thiếu token hoặc token không hợp lệ.
+- `403`: token không phải admin.
+
+## 5. Flow B - FE học viên (external system)
+
+### Bước B1: Verify OTP để lấy token học
+
+Endpoint:
+
+- `POST /api/otp/verify`
+
+Body:
+
+```json
+{
+  "email": "student@example.com",
+  "otp": "BY8-ABCD-EFGH-JKLM"
+}
+```
+
+Trường hợp OTP đúng:
+
+```json
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "message": "Xác minh thành công. OTP đã được làm mới ngay lập tức.",
+    "next_otp_expires_in": 60,
+    "token": "<jwt_course_access_30d>"
+  },
+  "message": "Xác minh OTP thành công",
+  "code": 200
+}
+```
+
+Trường hợp OTP sai hoặc hết hạn:
+
+```json
+{
+  "success": true,
+  "data": {
+    "valid": false,
+    "message": "OTP không hợp lệ",
+    "next_otp_expires_in": null,
+    "token": null
+  },
+  "message": "OTP không hợp lệ",
+  "code": 200
+}
+```
+
+Lưu ý quan trọng cho FE học viên:
+
+- Không kiểm tra thành công chỉ bằng HTTP 200.
+- Bắt buộc kiểm tra `data.valid === true` rồi mới dùng `data.token`.
+- Token từ verify có TTL 30 ngày.
+
+## 6. Stats cho dashboard admin
+
+Endpoint:
+
+- `GET /api/stats/otp-verifications`
+
+Header:
+
+- `Authorization: Bearer <jwt_admin>`
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "verified_users": 15,
+    "total_successful_verifications": 42
+  },
+  "message": "Lấy thống kê OTP thành công",
+  "code": 200
+}
+```
+
+## 7. CORS và tích hợp local
+
+Đảm bảo domain FE nằm trong `CORS_ORIGINS` của backend.
+
+Ví dụ local:
+
+- `http://127.0.0.1:5500`
+- `http://localhost:5500`
+- `http://localhost:3000`
+
+## 8. Biến môi trường backend
+
+Tạo `.env` ở root:
 
 ```env
-ADMIN_TOKEN=your_secret_admin_token
-MASTER_SECRET=your_base32_totp_secret
-ALLOWED_EMAILS=admin1@example.com,admin2@example.com
+APP_NAME=Beyond8 Auth Service
+API_PREFIX=/api
+
+DATABASE_URL=postgresql+psycopg2://postgres.<ref>:<password>@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres
+
+JWT_SECRET_KEY=replace-with-strong-secret
+JWT_ALGORITHM=HS256
+COURSE_ACCESS_TOKEN_EXPIRE_DAYS=30
+
+KEY_PREFIX=BY8
+OTP_TTL_SECONDS=60
+OTP_REFRESH_COOLDOWN_SECONDS=60
+
+CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000
 ```
 
-| Biến              | Mô tả                                                                 |
-|-------------------|-----------------------------------------------------------------------|
-| `ADMIN_TOKEN`     | Token bí mật dùng để xác thực các API call từ Frontend               |
-| `MASTER_SECRET`   | Chuỗi Base32 dùng làm seed cho thuật toán TOTP (dùng chung 1 secret) |
-| `ALLOWED_EMAILS`  | Danh sách email được phép đăng nhập, phân cách bằng dấu phẩy         |
-
-> ⚠️ **Không commit file `.env` lên Git.** File này đã được thêm vào `.gitignore`.
-
-### 3. Khởi động Backend
+## 9. Chạy backend nhanh
 
 ```bash
-py -m uvicorn be.index:app --reload --port 3636
+C:/Users/ACER/AppData/Local/Python/bin/python3.14.exe -m pip install -r requirements.txt
+C:/Users/ACER/AppData/Local/Python/bin/python3.14.exe -m alembic upgrade head
+C:/Users/ACER/AppData/Local/Python/bin/python3.14.exe -m uvicorn app.main:app --host 127.0.0.1 --port 3636
 ```
 
-Swagger UI có thể xem tại: `http://localhost:3636/api/docs`
+Nếu bị báo cổng 3636 đang dùng, tắt tiến trình cũ hoặc đổi sang cổng khác (ví dụ 3637).
 
-### 4. Mở Frontend
+## 10. Checklist FE implement
 
-Mở trực tiếp file `fe/index.html` bằng trình duyệt.  
-Frontend sẽ tự động phát hiện môi trường local và gọi API tại `http://127.0.0.1:3636`.
+Admin FE:
 
----
+- Gọi login bằng email admin.
+- Lưu `data.access_token` (cookie hoặc storage theo chính sách FE).
+- Gọi generate OTP với Bearer token.
+- Nếu API trả 401/403 thì logout và quay về màn hình login.
 
-## API Endpoints
+FE học viên:
 
-| Method | Endpoint              | Auth Required      | Mô tả                              |
-|--------|-----------------------|--------------------|------------------------------------|
-| `POST` | `/api/auth/login`     | Không              | Xác thực email, trả về Admin Token |
-| `GET`  | `/api/otp/generate`   | `x-admin-token`    | Sinh mã OTP hiện tại + thời gian còn lại |
-| `POST` | `/api/otp/verify`     | Không              | Kiểm tra tính hợp lệ của một mã OTP |
-
-### Ví dụ — Sinh OTP
-
-```bash
-curl -X GET http://localhost:3636/api/otp/generate \
-  -H "x-admin-token: your_secret_admin_token"
-```
-
-**Response:**
-```json
-{
-  "otp": "482931",
-  "expires_in": 43
-}
-```
-
-### Ví dụ — Xác thực OTP
-
-```bash
-curl -X POST "http://localhost:3636/api/otp/verify?otp=482931"
-```
-
-**Response:**
-```json
-{
-  "valid": true,
-  "message": "Chào mừng đến với Beyond8"
-}
-```
-
----
-
-## Deploy lên Vercel
-
-### Bước 1 — Cấu hình biến môi trường trên Vercel
-
-Vào **Vercel Dashboard → Project → Settings → Environment Variables** và thêm:
-
-```
-ADMIN_TOKEN      = <giá trị bí mật>
-MASTER_SECRET    = <chuỗi Base32>
-ALLOWED_EMAILS   = email1@example.com,email2@example.com
-```
-
-### Bước 2 — Deploy
-
-```bash
-vercel --prod
-```
-
-Hoặc kết nối repo GitHub để Vercel tự động deploy khi push lên `main`.
-
-### Routing sau khi deploy
-
-| URL                        | Đích                    |
-|----------------------------|-------------------------|
-| `/`                        | `fe/index.html`         |
-| `/login`                   | `fe/index.html`         |
-| `/admin/key`               | `fe/index.html`         |
-| `/api/*`                   | `be/index.py` (FastAPI) |
-
----
-
-## Luồng hoạt động
-
-```
-[Admin]
-  │
-  ├─ Nhập email → POST /api/auth/login
-  │       └─ Nhận admin_token → Lưu vào Cookie (30 ngày)
-  │
-  └─ GET /api/otp/generate (kèm x-admin-token)
-          └─ Hiển thị OTP 6 số + Countdown 60s
-                  │
-                  └─ Chia sẻ OTP cho [Khách hàng / Hệ thống 3]
-                              │
-                              └─ POST /api/otp/verify?otp=XXXXXX
-                                      └─ Kết quả: valid / invalid
-```
-
----
-
-## Thư viện sử dụng
-
-| Thư viện         | Phiên bản  | Mục đích                         |
-|------------------|------------|----------------------------------|
-| `fastapi`        | 0.110.0    | Web framework API                |
-| `uvicorn`        | 0.29.0     | ASGI server                      |
-| `pyotp`          | 2.9.0      | Tạo và xác thực mã TOTP          |
-| `python-dotenv`  | 1.0.1      | Đọc biến môi trường từ `.env`    |
+- Gọi verify với `{email, otp}`.
+- Nếu `data.valid === true`, lưu `data.token` vào key FE mong muốn (ví dụ `beyond-course-access`).
+- Nếu `data.valid === false`, hiển thị `data.message` cho người dùng nhập lại OTP.
