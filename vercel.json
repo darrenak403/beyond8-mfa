@@ -2,34 +2,34 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "be/index.py",
       "use": "@vercel/python"
     },
     {
-      "src": "public/*",
+      "src": "fe/*",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "api/index.py"
+      "dest": "be/index.py"
     },
     {
       "src": "/login",
-      "dest": "public/index.html"
+      "dest": "fe/index.html"
     },
     {
       "src": "/admin/key",
-      "dest": "public/index.html"
+      "dest": "fe/index.html"
     },
     {
       "src": "/",
-      "dest": "public/index.html"
+      "dest": "fe/index.html"
     },
     {
       "src": "/(.*)",
-      "dest": "public/$1"
+      "dest": "fe/$1"
     }
   ]
 }

@@ -1,4 +1,4 @@
-# py -m uvicorn api.index:app --reload --port 3636
+# py -m uvicorn be.index:app --reload --port 3636
 import os
 import pyotp
 import time
