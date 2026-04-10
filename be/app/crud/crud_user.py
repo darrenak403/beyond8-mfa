@@ -1,4 +1,5 @@
 from sqlalchemy import func, select
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -8,6 +9,15 @@ from app.models.user import User
 
 
 class CRUDUser:
+    def ensure_block_columns(self, db: Session) -> None:
+        """
+        Backward-compatible guard for production environments where the latest
+        migration may not have been executed yet.
+        """
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason VARCHAR(255)"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by_user_id VARCHAR(36)"))
+
     def get_by_id(self, db: Session, user_id: str) -> User | None:
         stmt = select(User).where(User.id == user_id)
         return db.execute(stmt).scalar_one_or_none()
