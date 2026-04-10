@@ -10,9 +10,13 @@ from dotenv import load_dotenv
 # Load config từ file .env (Dành cho chạy local)
 load_dotenv()
 
-# Lấy KEY từ môi trường (Vercel), nếu chạy local không có thì dùng giá trị mặc định
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "admin_key_123")
-MASTER_SECRET = os.getenv("MASTER_SECRET", "JBSWY3DPEHPK3PXP")
+# Lấy biến môi trường
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+MASTER_SECRET = os.getenv("MASTER_SECRET")
+ALLOWED_EMAILS = os.getenv("ALLOWED_EMAILS").split(",")
+
+class LoginRequest(BaseModel):
+    email: str
 
 # pyotp.TOTP obj với interval 60s
 totp = pyotp.TOTP(MASTER_SECRET, interval=60)
@@ -31,6 +35,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.post("/api/auth/login", tags=["Auth"])
+def login(request: LoginRequest):
+    """API xác thực email và trả về Token (Nếu có trong DS)"""
+    if request.email in ALLOWED_EMAILS:
+        return {"token": ADMIN_TOKEN}
+    raise HTTPException(status_code=401, detail="Email không được phép truy cập")
 
 def verify_admin(x_admin_token: str = Header(...)):
     if x_admin_token != ADMIN_TOKEN:
@@ -52,8 +63,8 @@ def verify_otp(otp: str):
     """API Check OTP (Client/Hệ thống 3 có thể gọi qua Method POST + URL Params)"""
     is_valid = totp.verify(otp)
     if is_valid:
-        return {"valid": True, "message": "OTP hợp lệ"}
-    return {"valid": False, "message": "OTP đã hết hạn"}
+        return {"valid": True, "message": "Chào mừng đến với Beyond8"}
+    return {"valid": False, "message": "Liên hệ Admin để cấp lại OTP"}
 
 if __name__ == "__main__":
     import uvicorn
