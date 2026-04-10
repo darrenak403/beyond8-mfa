@@ -48,8 +48,8 @@
       }
 
       .header-logo {
-        height: 40px;
-        margin-right: 15px;
+        height: 25px;
+        margin-right: 10px;
         object-fit: contain;
       }
 
@@ -397,6 +397,115 @@
         align-items: center;
         margin-bottom: 30px;
       }
+
+      /* MOBILE RESPONSIVE QUERIES */
+      @media screen and (max-width: 950px) {
+        .split-card {
+          flex-direction: column-reverse; /* Put OTP/Login on top! */
+          width: 90%;
+          margin: 20px auto;
+          min-height: auto;
+        }
+
+        .info-side {
+          padding: 25px 20px;
+          align-items: center;
+          text-align: center;
+        }
+
+        .info-side::after {
+          /* Expand border horizontally at the TOP of info-side because it's now below OTP */
+          width: 100%;
+          height: 4px;
+          bottom: auto;
+          top: 0;
+          right: 0;
+          left: 0;
+          background: linear-gradient(90deg, rgba(250, 129, 18, 0.3), var(--primary-accent));
+        }
+
+        .action-side {
+          padding: 40px 30px;
+        }
+
+        .otp-display {
+          font-size: 44px;
+          letter-spacing: 8px;
+        }
+      }
+
+      @media screen and (max-width: 480px) {
+        header {
+          padding: 15px 20px;
+          margin-bottom: 0;
+        }
+
+        .split-card {
+          width: 100%;
+          border-radius: 0;
+          margin: 0;
+          border: none;
+          box-shadow: none;
+          flex: 1; /* Stretch screen */
+        }
+
+        .action-side {
+          flex: 1; /* Push the info side to the bottom */
+          justify-content: center;
+          padding: 30px 20px;
+        }
+
+        .info-side {
+          flex: none; /* Just be a footer */
+          padding: 30px 20px;
+        }
+
+        .header-logo {
+          height: 30px;
+          margin-right: 0;
+          max-width: 100px;
+        }
+
+        .header-left {
+          gap: 6px;
+        }
+
+        .header-title {
+          font-size: 16px;
+        }
+
+        .info-title {
+          font-size: 20px;
+          margin-bottom: 10px;
+        }
+
+        .info-desc {
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .security-badge {
+          margin-top: 15px;
+          align-self: center; /* Center on mobile instead of flex-start */
+        }
+
+        .action-title {
+          font-size: 22px;
+        }
+
+        .action-header-row {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+
+        .otp-display {
+          font-size: 34px;
+          letter-spacing: 5px;
+          padding: 60px 5px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -581,43 +690,43 @@
         const errorEl = document.getElementById('login-error')
 
         if (!emailInput) {
-            errorEl.innerText = "Vui lòng nhập email!"
-            showError(errorEl)
-            return
+          errorEl.innerText = 'Vui lòng nhập email!'
+          showError(errorEl)
+          return
         }
 
         try {
-            const btn = document.querySelector('.btn-primary')
-            const originalBtn = btn.innerHTML;
-            btn.innerHTML = "Đang kiểm tra...";
+          const btn = document.querySelector('.btn-primary')
+          const originalBtn = btn.innerHTML
+          btn.innerHTML = 'Đang kiểm tra...'
 
-            const response = await fetch(LOGIN_URL, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ email: emailInput })
-            })
+          const response = await fetch(LOGIN_URL, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email: emailInput}),
+          })
 
-            btn.innerHTML = originalBtn;
+          btn.innerHTML = originalBtn
 
-            if (response.ok) {
-                const data = await response.json()
-                const token = data.token
-                
-                document.cookie = `admin_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}`
-                errorEl.style.display = 'none'
+          if (response.ok) {
+            const data = await response.json()
+            const token = data.token
 
-                document.getElementById('login-section').style.opacity = '0'
-                setTimeout(() => {
-                    document.getElementById('login-section').style.opacity = '1'
-                    checkAuth()
-                }, 300)
-            } else {
-                errorEl.innerText = "Email không có quyền tự kích hoạt!"
-                showError(errorEl)
-            }
-        } catch (e) {
-            errorEl.innerText = "Lỗi kết nối Backend!"
+            document.cookie = `admin_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}`
+            errorEl.style.display = 'none'
+
+            document.getElementById('login-section').style.opacity = '0'
+            setTimeout(() => {
+              document.getElementById('login-section').style.opacity = '1'
+              checkAuth()
+            }, 300)
+          } else {
+            errorEl.innerText = 'Email không có quyền tự kích hoạt!'
             showError(errorEl)
+          }
+        } catch (e) {
+          errorEl.innerText = 'Lỗi kết nối Backend!'
+          showError(errorEl)
         }
       }
 
@@ -642,10 +751,10 @@
         clearInterval(countdownInterval)
         const token = getCookieToken()
         if (!token) {
-            handleLogout()
-            return
+          handleLogout()
+          return
         }
-        
+
         if (isInitial) {
           document.getElementById('loading-text').style.display = 'block'
           document.getElementById('otp-display').style.display = 'none'
@@ -655,7 +764,7 @@
         } else {
           document.getElementById('otp-display').style.opacity = '0.5'
         }
-        
+
         document.getElementById('error-message').style.display = 'none'
 
         try {
@@ -665,11 +774,11 @@
           })
 
           if (!response.ok) {
-              if (response.status === 401) {
-                  handleLogout()
-                  return
-              }
-              throw new Error('Chưa bật Backend, hoặc sai hệ thống!')
+            if (response.status === 401) {
+              handleLogout()
+              return
+            }
+            throw new Error('Chưa bật Backend, hoặc sai hệ thống!')
           }
 
           const data = await response.json()
@@ -681,14 +790,14 @@
             document.getElementById('countdown-text').style.display = 'flex'
             document.getElementById('progress-container').style.display = 'block'
           }
-          
+
           document.getElementById('otp-display').style.opacity = '1'
           document.getElementById('otp-display').innerText = data.otp
           startCountdown(data.expires_in)
         } catch (error) {
           if (isInitial) document.getElementById('loading-text').style.display = 'none'
           document.getElementById('otp-display').style.opacity = '1'
-          
+
           const errorEl = document.getElementById('error-message')
           errorEl.style.display = 'block'
           errorEl.innerText = 'Lỗi: ' + error.message

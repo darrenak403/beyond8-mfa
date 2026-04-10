@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Lấy biến môi trường
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
-MASTER_SECRET = os.getenv("MASTER_SECRET")
-ALLOWED_EMAILS = os.getenv("ALLOWED_EMAILS").split(",")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+MASTER_SECRET = os.getenv("MASTER_SECRET", "")
+ALLOWED_EMAILS = [e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",")] if os.getenv("ALLOWED_EMAILS") else []
 
 class LoginRequest(BaseModel):
     email: str
