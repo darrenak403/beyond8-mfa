@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hệ thống Admin Cấp Phát OTP</title>
+    <!-- Favicon cho tab trình duyệt -->
+    <link rel="icon" href="logo.png" type="image/png" />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-color: #faf3e1;
+        --surface-secondary: #f5e7c6;
+        --primary-accent: #fa8112;
+        --text-main: #222222;
+        --text-muted: #666666;
+        --danger: #e74c3c;
+      }
+
+      body {
+        font-family: 'Open Sans', sans-serif;
+        background-color: #ffffff; /* Nền trắng như yêu cầu */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        color: var(--text-main);
+      }
+
+      /* HEADER STYLES */
+      header {
+        width: 100%;
+        background-color: var(--bg-color); /* Màu kem khác màu nền trắng */
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+        padding: 15px 40px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        box-sizing: border-box;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+        margin-bottom: auto;
+        z-index: 10;
+      }
+
+      .header-logo {
+        height: 40px;
+        margin-right: 15px;
+        object-fit: contain;
+      }
+
+      .header-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--text-main);
+        margin: 0;
+        letter-spacing: -0.5px;
+        display: flex;
+        align-items: center;
+      }
+
+      .header-title span {
+        color: var(--primary-accent);
+        margin-left: 4px;
+      }
+
+      /* SPLIT LAYOUT CARD */
+      .split-card {
+        display: flex;
+        width: 900px; /* Rộng hơn rất nhiều */
+        min-height: 480px;
+        background: #ffffff;
+        border-radius: 24px;
+        box-shadow:
+          0 20px 50px rgba(34, 34, 34, 0.08),
+          0 2px 10px rgba(34, 34, 34, 0.03);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        margin-bottom: auto;
+        transform: translateY(0);
+        animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* BÊN TRÁI: THÔNG TIN */
+      .info-side {
+        flex: 5;
+        background: linear-gradient(145deg, var(--bg-color), var(--surface-secondary));
+        color: var(--text-main);
+        padding: 50px 40px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+      }
+
+      .info-side::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(180deg, rgba(250, 129, 18, 0.3), var(--primary-accent));
+      }
+
+      .main-logo {
+        height: 60px;
+        margin-bottom: 25px;
+        object-fit: contain;
+        filter: drop-shadow(0 10px 15px rgba(250, 129, 18, 0.3));
+        align-self: flex-start;
+      }
+
+      .info-title {
+        font-weight: 800;
+        font-size: 32px;
+        margin-top: 0;
+        margin-bottom: 15px;
+        letter-spacing: -0.5px;
+        line-height: 1.2;
+        color: var(--text-main);
+      }
+
+      .info-desc {
+        color: var(--text-muted);
+        font-weight: 500;
+        margin-bottom: 0;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .security-badge {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(250, 129, 18, 0.1);
+        padding: 8px 16px;
+        border-radius: 20px;
+        margin-top: 30px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--primary-accent);
+        align-self: flex-start;
+      }
+
+      /* BÊN PHẢI: FORM & OTP */
+      .action-side {
+        flex: 7;
+        padding: 50px 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        background: #ffffff;
+      }
+
+      .action-title {
+        font-weight: 800;
+        font-size: 28px;
+        margin-top: 0;
+        margin-bottom: 8px;
+        color: var(--text-main);
+      }
+
+      p.subtitle {
+        color: var(--text-muted);
+        font-weight: 500;
+        margin-top: 0;
+        margin-bottom: 35px;
+        font-size: 15px;
+      }
+
+      /* PREMIUM INPUT STYLES */
+      input[type='email'] {
+        width: 100%;
+        padding: 18px 20px;
+        font-size: 16px;
+        font-family: 'Open Sans', sans-serif;
+        border: 2px solid var(--surface-secondary);
+        border-radius: 14px;
+        box-sizing: border-box;
+        outline: none;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        color: var(--text-main);
+        background: #fafafa;
+        margin-bottom: 12px;
+      }
+
+      input[type='email']:focus {
+        background: #ffffff;
+        border-color: var(--primary-accent);
+        box-shadow: 0 4px 15px rgba(250, 129, 18, 0.1);
+      }
+
+      /* OTP DISPLAY - NEUMORPHIC GLOW */
+      .otp-display {
+        font-size: 56px;
+        font-weight: 800;
+        color: var(--primary-accent);
+        letter-spacing: 12px;
+        margin: 20px 0 30px 0;
+        padding: 25px 10px;
+        background: rgba(250, 129, 18, 0.05);
+        border-radius: 16px;
+        border: 1px dashed rgba(250, 129, 18, 0.3);
+        text-align: center;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        user-select: all;
+      }
+
+      .otp-display:hover {
+        transform: scale(1.02);
+        background: rgba(250, 129, 18, 0.08);
+      }
+
+      /* COUNTDOWN & PROGRESS */
+      .countdown {
+        font-size: 15px;
+        color: var(--text-muted);
+        margin-bottom: 10px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .countdown span {
+        color: var(--primary-accent);
+        font-size: 24px;
+        font-weight: 800;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 10px;
+        background-color: var(--bg-color);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 15px;
+      }
+
+      .progress {
+        height: 100%;
+        background: linear-gradient(90deg, #fca34d, var(--primary-accent));
+        width: 100%;
+        transition: width 1s linear;
+        border-radius: 10px;
+      }
+
+      /* PRIMARY BUTTON */
+      button.btn-primary {
+        background: linear-gradient(135deg, var(--text-main), #444);
+        color: white;
+        border: none;
+        padding: 18px 24px;
+        font-size: 16px;
+        font-weight: 600;
+        font-family: 'Open Sans', sans-serif;
+        border-radius: 14px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+        box-shadow: 0 8px 20px rgba(34, 34, 34, 0.15);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 15px;
+      }
+
+      button.btn-primary:hover {
+        background: linear-gradient(135deg, var(--primary-accent), #e0720e);
+        box-shadow: 0 10px 25px rgba(250, 129, 18, 0.25);
+        transform: translateY(-2px);
+      }
+
+      /* LOGOUT BUTTON */
+      .logout-btn {
+        background: transparent;
+        color: var(--text-muted);
+        border: 1px solid var(--surface-secondary);
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .logout-btn:hover {
+        background: rgba(231, 76, 60, 0.1);
+        color: var(--danger);
+        border-color: rgba(231, 76, 60, 0.3);
+      }
+
+      /* ERROR/LOADING STATES */
+      .error {
+        color: var(--danger);
+        font-size: 14px;
+        font-weight: 600;
+        background: rgba(231, 76, 60, 0.08);
+        padding: 12px;
+        border-radius: 10px;
+        display: none;
+        animation: shake 0.4s ease-in-out;
+        margin-bottom: 15px;
+      }
+
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-5px);
+        }
+        75% {
+          transform: translateX(5px);
+        }
+      }
+
+      .loading {
+        color: var(--primary-accent);
+        font-size: 18px;
+        font-weight: 600;
+        margin: 40px 0;
+        text-align: center;
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.5;
+          transform: scale(0.95);
+        }
+      }
+
+      .action-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img
+        src="logo.png"
+        alt="Infinity Logo"
+        class="header-logo"
+        onerror="this.style.display = 'none'"
+      />
+      <h1 class="header-title">Beyond8<span>Auth</span></h1>
+    </header>
+
+    <div class="split-card">
+      <!-- Cột Trái: Thông tin -->
+      <div class="info-side">
+        <h2 class="info-title">Hệ thống Trạm Cấp Phát Bảo Mật Khách Hàng</h2>
+        <p class="info-desc">
+          Mọi chuỗi mã hóa (OTP) được cấp phát tự động bằng thuật toán bảo vệ dữ liệu nội bộ. Thông
+          tin tại trạm này chỉ dành riêng cho quyền quản trị.
+        </p>
+
+        <div class="security-badge">
+          <svg
+            fill="currentColor"
+            viewBox="0 0 20 20"
+            style="width: 16px; height: 16px; margin-right: 6px"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z"
+              clip-rule="evenodd"
+            ></path>
+          </svg>
+          Kết nối mã hóa riêng tư
+        </div>
+      </div>
+
+      <!-- Cột Phải: Xử lý chức năng -->
+      <div class="action-side">
+        <!-- MÀN HÌNH ĐĂNG NHẬP -->
+        <div id="login-section" style="display: none; transition: opacity 0.3s">
+          <h3 class="action-title">Đăng Nhập</h3>
+          <p class="subtitle">Vui lòng nhập Email Admin để tiếp tục</p>
+
+          <div>
+            <input
+              type="email"
+              id="email-input"
+              placeholder="Nhập địa chỉ email..."
+              autocomplete="email"
+              onkeypress="if (event.key === 'Enter') handleLogin()"
+            />
+            <div class="error" id="login-error">Email không có quyền truy cập hệ thống!</div>
+          </div>
+
+          <button class="btn-primary" onclick="handleLogin()">
+            Truy cập Trạm mã
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              style="width: 20px; height: 20px"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 7l5 5m0 0l-5 5m5-5H6"
+              ></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- MÀN HÌNH ĐỌC MÃ OTP -->
+        <div id="otp-section" style="display: none; transition: opacity 0.3s">
+          <div class="action-header-row">
+            <div>
+              <h3 class="action-title" style="font-size: 24px">Trạm Số OTP</h3>
+              <p style="margin: 0; font-size: 14px; color: var(--text-muted); font-weight: 500">
+                Phiên mã hóa 60s
+              </p>
+            </div>
+            <button onclick="handleLogout()" class="logout-btn">Đăng xuất</button>
+          </div>
+
+          <div id="otp-container">
+            <div class="loading" id="loading-text">Đang đồng bộ phân luồng mã...</div>
+            <div
+              class="otp-display"
+              id="otp-display"
+              style="display: none"
+              title="Click để sao chép mã"
+            >
+              ------
+            </div>
+            <div class="countdown" id="countdown-text" style="display: none">
+              <span>Hiệu lực còn lại</span>
+              <div><span id="timer">--</span>s</div>
+            </div>
+            <div class="progress-bar" id="progress-container" style="display: none">
+              <div class="progress" id="progress"></div>
+            </div>
+            <div class="error" id="error-message"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Chú ý: Khi chạy trên Vercel, bắt buộc dùng đường dẫn thu gọn này.
+      // Nếu test local, bạn đổi lại thành 'http://127.0.0.1:3636/api/otp/generate'
+      const API_URL = '/api/otp/generate'
+      const ADMIN_TOKEN = 'admin_key_123'
+
+      const ALLOWED_EMAILS = ['ngothanhdat4002@gmail.com', 'tptvt.2002@gmail.com']
+
+      let countdownInterval
+
+      function checkAuth() {
+        const cookies = document.cookie.split(';')
+        const authCookie = cookies.find((c) => c.trim().startsWith('auth_email='))
+
+        if (authCookie) {
+          const email = authCookie.split('=')[1]
+          if (ALLOWED_EMAILS.includes(email)) {
+            document.getElementById('login-section').style.display = 'none'
+            document.getElementById('otp-section').style.display = 'block'
+            
+            // Cập nhật URL sạch trên Vercel (chỉ chạy khi deploy, bỏ qua local)
+            if (window.location.hostname !== '127.0.0.1' && window.location.pathname !== '/admin/key') {
+                window.history.pushState({}, '', '/admin/key');
+            }
+
+            fetchOTP()
+            return
+          }
+        }
+
+        document.getElementById('login-section').style.display = 'block'
+        document.getElementById('otp-section').style.display = 'none'
+        clearInterval(countdownInterval)
+        
+        // Cập nhật URL sạch trên Vercel
+        if (window.location.hostname !== '127.0.0.1' && window.location.pathname !== '/login') {
+            window.history.pushState({}, '', '/login');
+        }
+      }
+
+      function handleLogin() {
+        const emailInput = document.getElementById('email-input').value.trim()
+        const errorEl = document.getElementById('login-error')
+
+        if (ALLOWED_EMAILS.includes(emailInput)) {
+          document.cookie = `auth_email=${emailInput}; path=/; max-age=${30 * 24 * 60 * 60}`
+          errorEl.style.display = 'none'
+
+          document.getElementById('login-section').style.opacity = '0'
+          setTimeout(() => {
+            document.getElementById('login-section').style.opacity = '1'
+            checkAuth()
+          }, 300)
+        } else {
+          errorEl.style.display = 'block'
+          errorEl.style.animation = 'none'
+          errorEl.offsetHeight
+          errorEl.style.animation = 'shake 0.4s ease-in-out'
+        }
+      }
+
+      function handleLogout() {
+        document.getElementById('otp-section').style.opacity = '0'
+        setTimeout(() => {
+          document.cookie = `auth_email=; path=/; max-age=0`
+          document.getElementById('email-input').value = ''
+          document.getElementById('otp-section').style.opacity = '1'
+          checkAuth()
+        }, 300)
+      }
+
+      async function fetchOTP() {
+        clearInterval(countdownInterval)
+        document.getElementById('loading-text').style.display = 'block'
+        document.getElementById('otp-display').style.display = 'none'
+        document.getElementById('countdown-text').style.display = 'none'
+        document.getElementById('progress-container').style.display = 'none'
+        document.getElementById('error-message').style.display = 'none'
+
+        try {
+          const response = await fetch(API_URL, {
+            method: 'GET',
+            headers: {'x-admin-token': ADMIN_TOKEN},
+          })
+
+          if (!response.ok) throw new Error('Chưa bật Backend, hoặc sai mật khẩu!')
+
+          const data = await response.json()
+
+          document.getElementById('loading-text').style.display = 'none'
+          document.getElementById('otp-display').style.display = 'block'
+          document.getElementById('countdown-text').style.display = 'flex'
+          document.getElementById('progress-container').style.display = 'block'
+
+          document.getElementById('otp-display').innerText = data.otp
+          startCountdown(data.expires_in)
+        } catch (error) {
+          document.getElementById('loading-text').style.display = 'none'
+          const errorEl = document.getElementById('error-message')
+          errorEl.style.display = 'block'
+          errorEl.innerText = 'Lỗi: ' + error.message
+        }
+      }
+
+      function startCountdown(seconds) {
+        let timeLeft = seconds
+        const totalTime = 60
+        const timerElement = document.getElementById('timer')
+        const progressElement = document.getElementById('progress')
+
+        timerElement.innerText = Math.max(0, timeLeft)
+        progressElement.style.width = (Math.max(0, timeLeft) / totalTime) * 100 + '%'
+
+        countdownInterval = setInterval(() => {
+          timeLeft--
+          if (timeLeft <= 0) {
+            clearInterval(countdownInterval)
+            fetchOTP()
+          } else {
+            timerElement.innerText = timeLeft
+            progressElement.style.width = (timeLeft / totalTime) * 100 + '%'
+          }
+        }, 1000)
+      }
+
+      document.getElementById('otp-display').addEventListener('click', function () {
+        if (this.innerText !== '------') {
+          navigator.clipboard.writeText(this.innerText)
+          const originalColor = this.style.color
+          this.style.color = '#222222'
+          this.style.transform = 'scale(0.98)'
+          setTimeout(() => {
+            this.style.color = originalColor
+            this.style.transform = ''
+          }, 200)
+        }
+      })
+
+      window.onload = checkAuth
+    </script>
+  </body>
+</html>
