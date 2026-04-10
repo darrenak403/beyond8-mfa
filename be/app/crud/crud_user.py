@@ -17,6 +17,8 @@ class CRUDUser:
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason VARCHAR(255)"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by_user_id VARCHAR(36)"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token VARCHAR(255)"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_token_updated_at TIMESTAMPTZ"))
 
     def get_by_id(self, db: Session, user_id: str) -> User | None:
         stmt = select(User).where(User.id == user_id)
@@ -24,6 +26,10 @@ class CRUDUser:
 
     def get_by_email(self, db: Session, email: str) -> User | None:
         stmt = select(User).where(User.email == email.lower())
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_by_refresh_token(self, db: Session, refresh_token: str) -> User | None:
+        stmt = select(User).where(User.refresh_token == refresh_token)
         return db.execute(stmt).scalar_one_or_none()
 
     def get_all(
@@ -97,7 +103,16 @@ class CRUDUser:
             user.blocked_at = datetime.now(timezone.utc)
             user.blocked_reason = (blocked_reason or "").strip() or None
             user.blocked_by_user_id = blocked_by_user_id
+            user.refresh_token = None
+            user.refresh_token_updated_at = datetime.now(timezone.utc)
 
+        db.add(user)
+        db.flush()
+        return user
+
+    def rotate_refresh_token(self, db: Session, user: User, refresh_token: str) -> User:
+        user.refresh_token = refresh_token
+        user.refresh_token_updated_at = datetime.now(timezone.utc)
         db.add(user)
         db.flush()
         return user

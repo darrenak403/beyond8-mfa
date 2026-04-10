@@ -20,7 +20,9 @@ from app.schemas.api_response import error_response
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if SessionLocal is not None:
+    should_bootstrap = settings.run_startup_bootstrap and os.getenv("VERCEL") != "1"
+
+    if SessionLocal is not None and should_bootstrap:
         db = SessionLocal()
         try:
             crud_user.ensure_block_columns(db)

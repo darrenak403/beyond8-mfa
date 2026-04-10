@@ -11,6 +11,7 @@ const apiBase = isLocalhost ? 'http://127.0.0.1:3636/api' : '/api'
 
 const OTP_API_URL = `${apiBase}/otp/generate`
 const LOGIN_URL = `${apiBase}/auth/login`
+const REFRESH_TOKEN_URL = `${apiBase}/auth/refresh-token`
 const STATS_URLS = [`${apiBase}/otp-verifications`, `${apiBase}/stats/otp-verifications`]
 const USERS_URLS = [
   `${apiBase}/users?offset=0&limit=200`,
@@ -32,6 +33,16 @@ let currentOtpVersion = null
 let activeTab = 'otp-tab'
 let usersCache = []
 let usersStatusFilter = 'all'
+let refreshTimeoutId
+let refreshInFlightPromise = null
+
+function buildCookieOptions() {
+  const options = ['path=/', 'max-age=' + 30 * 24 * 60 * 60, 'SameSite=Strict']
+  if (window.location.protocol === 'https:') {
+    options.push('Secure')
+  }
+  return options.join('; ')
+}
 
 const ORIGINAL_COPY_HTML = `
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
@@ -102,6 +113,76 @@ function getCookieToken() {
   return authCookie ? authCookie.split('=')[1] : null
 }
 
+function getRefreshToken() {
+  const cookies = document.cookie.split(';')
+  const refreshCookie = cookies.find((c) => c.trim().startsWith('refresh_token='))
+  return refreshCookie ? refreshCookie.split('=')[1] : null
+}
+
+function persistAuthSession(sessionPayload) {
+  const accessToken = sessionPayload?.access_token
+  const refreshToken = sessionPayload?.refresh_token
+  const expiresIn = Number(sessionPayload?.expires_in || 0)
+
+  if (!accessToken || !refreshToken || !expiresIn) {
+    throw new Error('Thông tin phiên đăng nhập không hợp lệ')
+  }
+
+  const cookieOptions = buildCookieOptions()
+  document.cookie = `auth_token=${accessToken}; ${cookieOptions}`
+  document.cookie = `refresh_token=${refreshToken}; ${cookieOptions}`
+  scheduleTokenRefresh(expiresIn)
+}
+
+function scheduleTokenRefresh(expiresIn) {
+  clearTimeout(refreshTimeoutId)
+  const safeLeadSeconds = 20
+  const refreshInMs = Math.max(1000, (expiresIn - safeLeadSeconds) * 1000)
+  refreshTimeoutId = setTimeout(() => {
+    refreshAccessToken()
+  }, refreshInMs)
+}
+
+async function refreshAccessToken() {
+  if (refreshInFlightPromise) {
+    return refreshInFlightPromise
+  }
+
+  refreshInFlightPromise = (async () => {
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) {
+      handleLogout()
+      return false
+    }
+
+    try {
+      const response = await fetch(REFRESH_TOKEN_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({refresh_token: refreshToken}),
+      })
+
+      if (!response.ok) {
+        handleLogout()
+        return false
+      }
+
+      const data = await response.json()
+      persistAuthSession(data.data)
+      return true
+    } catch (_) {
+      handleLogout()
+      return false
+    }
+  })()
+
+  try {
+    return await refreshInFlightPromise
+  } finally {
+    refreshInFlightPromise = null
+  }
+}
+
 function formatVND(value) {
   return `${new Intl.NumberFormat('vi-VN').format(value)} VND`
 }
@@ -144,6 +225,7 @@ function showLoginScreen() {
   document.getElementById('header-logout-btn').style.display = 'none'
   clearInterval(countdownInterval)
   clearInterval(pollingInterval)
+  clearTimeout(refreshTimeoutId)
 
   if (window.location.hostname !== '127.0.0.1' && window.location.pathname !== '/login') {
     window.history.pushState({}, '', '/login')
@@ -202,13 +284,7 @@ async function handleLogin() {
     }
 
     const data = await response.json()
-    const token = data.data?.access_token
-
-    if (!token) {
-      throw new Error('Không nhận được access token từ backend')
-    }
-
-    document.cookie = `auth_token=${token}; path=/; max-age=${30 * 24 * 60 * 60}`
+    persistAuthSession(data.data)
     errorEl.style.display = 'none'
 
     document.getElementById('login-section').style.opacity = '0'
@@ -226,6 +302,8 @@ function handleLogout() {
   document.getElementById('otp-section').style.opacity = '0'
   setTimeout(() => {
     document.cookie = 'auth_token=; path=/; max-age=0'
+    document.cookie = 'refresh_token=; path=/; max-age=0'
+    clearTimeout(refreshTimeoutId)
     document.getElementById('email-input').value = ''
     document.getElementById('otp-section').style.opacity = '1'
     showLoginScreen()
@@ -235,14 +313,29 @@ function handleLogout() {
 async function fetchWithAuth(url) {
   const token = getCookieToken()
   if (!token) {
-    handleLogout()
-    return null
+    const refreshed = await refreshAccessToken()
+    if (!refreshed) {
+      handleLogout()
+      return null
+    }
   }
 
-  const response = await fetch(url, {
+  let activeToken = getCookieToken()
+  let response = await fetch(url, {
     method: 'GET',
-    headers: {Authorization: `Bearer ${token}`},
+    headers: {Authorization: `Bearer ${activeToken}`},
   })
+
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed) {
+      activeToken = getCookieToken()
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {Authorization: `Bearer ${activeToken}`},
+      })
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
@@ -260,18 +353,37 @@ async function fetchWithAuth(url) {
 async function patchWithAuth(url, payload = null) {
   const token = getCookieToken()
   if (!token) {
-    handleLogout()
-    return null
+    const refreshed = await refreshAccessToken()
+    if (!refreshed) {
+      handleLogout()
+      return null
+    }
   }
 
-  const response = await fetch(url, {
+  let activeToken = getCookieToken()
+  let response = await fetch(url, {
     method: 'PATCH',
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${activeToken}`,
       'Content-Type': 'application/json',
     },
     body: payload ? JSON.stringify(payload) : null,
   })
+
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed) {
+      activeToken = getCookieToken()
+      response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: payload ? JSON.stringify(payload) : null,
+      })
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {

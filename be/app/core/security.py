@@ -18,12 +18,22 @@ SAFE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 # ---------------------------------------------------------------------------
 
 
-def create_access_token(subject: str, role: str) -> str:
+def create_access_token(subject: str, role: str, session_id: str | None = None) -> str:
+    issued_at = datetime.now(timezone.utc)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
     payload: Dict[str, Any] = {
         "sub": subject,
         "role": role,
+        "iat": int(issued_at.timestamp()),
+        "exp": expire,
     }
+    if session_id is not None:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def access_token_expires_in_seconds() -> int:
+    return max(1, settings.jwt_access_token_expire_minutes * 60)
 
 
 def create_course_access_token(subject: str) -> str:

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = Field(default=15, alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
     course_access_token_expire_days: int = 30
 
     otp_ttl_seconds: int = 60
@@ -22,6 +24,7 @@ class Settings(BaseSettings):
     otp_refresh_cooldown_seconds: int = 60
 
     seed_admin_email: str = "admin@gmail.com"
+    run_startup_bootstrap: bool = Field(default=True, alias="RUN_STARTUP_BOOTSTRAP")
 
     key_prefix: str = Field(default="BY8", alias="KEY_PREFIX")
     cors_origins: str = Field(default="http://127.0.0.1:5500,http://localhost:5500", alias="CORS_ORIGINS")
