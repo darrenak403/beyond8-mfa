@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_admin
+from app.core.deps import get_current_admin, get_current_user
 from app.core.security import create_course_access_token
-from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
@@ -25,18 +24,30 @@ def generate_otp(admin_user: User = Depends(get_current_admin), db: Session = De
 
 
 @router.post("/verify", response_model=ApiResponse[OTPVerifyResponse])
-def verify_otp(payload: ExternalOTPVerifyRequest, db: Session = Depends(get_db)):
+def verify_otp(
+    payload: ExternalOTPVerifyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Verify OTP submitted by an external user.
+    Verify OTP submitted by an authenticated user.
     On success: records audit log row + immediately rotates OTP window.
     On failure: no DB writes.
     """
-    external_user = crud_user.get_or_create(db, payload.email.lower(), "user")
+    if payload.email.lower().strip() != current_user.email.lower().strip():
+        response_data = OTPVerifyResponse(
+            valid=False,
+            message="Email không khớp với người dùng đang đăng nhập",
+            next_otp_expires_in=None,
+            token=None,
+        )
+        return success_response(data=response_data, message="Email không hợp lệ")
+
     valid, message, next_expires = otp_service.verify_and_rotate(
         db,
-        user_id=external_user.id,
+        user_id=current_user.id,
         otp_raw=payload.otp,
     )
-    token = create_course_access_token(subject=external_user.id) if valid else None
+    token = create_course_access_token(subject=current_user.id) if valid else None
     response_data = OTPVerifyResponse(valid=valid, message=message, next_otp_expires_in=next_expires, token=token)
     return success_response(data=response_data, message="Xác minh OTP thành công" if valid else message)
