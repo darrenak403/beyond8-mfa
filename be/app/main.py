@@ -70,7 +70,13 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
 async def http_exception_handler(_: Request, exc: HTTPException):
     message = exc.detail if isinstance(exc.detail, str) else "Yêu cầu thất bại"
     payload = error_response(message=message, code=exc.status_code, data=None)
-    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+    response = JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+
+    if exc.status_code in (401, 403):
+        response.delete_cookie("auth_token", path="/")
+        response.delete_cookie("refresh_token", path="/")
+
+    return response
 
 
 @app.exception_handler(Exception)
