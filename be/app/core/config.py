@@ -3,7 +3,9 @@ from typing import List
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
 
 class Settings(BaseSettings):
     app_name: str = "Beyond8 Auth Service"
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     key_prefix: str = Field(default="BY8", alias="KEY_PREFIX")
     cors_origins: str = Field(default="http://127.0.0.1:5500,http://localhost:5500", alias="CORS_ORIGINS")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=_env_path, env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @property
     def cors_origins_list(self) -> List[str]:

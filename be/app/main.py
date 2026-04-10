@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Fix for Vercel/Root execution: Ensure the 'be' directory is in PYTHONPATH
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
