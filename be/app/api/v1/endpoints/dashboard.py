@@ -5,11 +5,24 @@ from app.core.deps import get_current_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
-from app.schemas.auth import UserItemResponse, UserListResponse
+from app.schemas.auth import BlockUserRequest, UserItemResponse, UserListResponse
 from app.schemas.stats import OTPStatsResponse
 from app.services import auth_service, stats_service
 
 router = APIRouter(tags=["Dashboard"])
+
+
+def _to_user_item_response(user: User) -> UserItemResponse:
+    return UserItemResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role_name,
+        is_active=user.is_active,
+        blocked_at=user.blocked_at,
+        blocked_reason=user.blocked_reason,
+        blocked_by_user_id=user.blocked_by_user_id,
+        created_at=user.created_at,
+    )
 
 
 def _build_user_list_response(
@@ -24,16 +37,7 @@ def _build_user_list_response(
         limit=limit,
         search=search,
     )
-    user_items = [
-        UserItemResponse(
-            id=user.id,
-            email=user.email,
-            role=user.role_name,
-            is_active=user.is_active,
-            created_at=user.created_at,
-        )
-        for user in users
-    ]
+    user_items = [_to_user_item_response(user) for user in users]
     return UserListResponse(total_users=total_users, offset=offset, limit=limit, users=user_items)
 
 
@@ -65,3 +69,31 @@ def otp_verification_stats_dashboard(
         total_successful_verifications=total_success,
     )
     return success_response(data=response_data, message="Lấy thống kê OTP thành công")
+
+
+@router.patch("/users/{user_id}/block", response_model=ApiResponse[UserItemResponse])
+@router.patch("/getAllUser/{user_id}/block", response_model=ApiResponse[UserItemResponse])
+def block_user_dashboard(
+    user_id: str,
+    payload: BlockUserRequest,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    updated_user = auth_service.block_user(
+        db,
+        user_id=user_id,
+        admin_user_id=admin_user.id,
+        reason=payload.reason,
+    )
+    return success_response(data=_to_user_item_response(updated_user), message="Đã khóa người dùng")
+
+
+@router.patch("/users/{user_id}/unblock", response_model=ApiResponse[UserItemResponse])
+@router.patch("/getAllUser/{user_id}/unblock", response_model=ApiResponse[UserItemResponse])
+def unblock_user_dashboard(
+    user_id: str,
+    _admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    updated_user = auth_service.unblock_user(db, user_id=user_id)
+    return success_response(data=_to_user_item_response(updated_user), message="Đã mở khóa người dùng")

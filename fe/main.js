@@ -16,12 +16,22 @@ const USERS_URLS = [
   `${apiBase}/users?offset=0&limit=200`,
   `${apiBase}/getAllUser?offset=0&limit=200`,
 ]
+const BLOCK_USER_URLS = (userId) => [
+  `${apiBase}/users/${userId}/block`,
+  `${apiBase}/getAllUser/${userId}/block`,
+]
+const UNBLOCK_USER_URLS = (userId) => [
+  `${apiBase}/users/${userId}/unblock`,
+  `${apiBase}/getAllUser/${userId}/unblock`,
+]
 const PRICE_PER_BUYER = 35000
 
 let countdownInterval
 let pollingInterval
 let currentOtpVersion = null
 let activeTab = 'otp-tab'
+let usersCache = []
+let usersStatusFilter = 'all'
 
 const ORIGINAL_COPY_HTML = `
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
@@ -247,6 +257,35 @@ async function fetchWithAuth(url) {
   return response.json()
 }
 
+async function patchWithAuth(url, payload = null) {
+  const token = getCookieToken()
+  if (!token) {
+    handleLogout()
+    return null
+  }
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: payload ? JSON.stringify(payload) : null,
+  })
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      handleLogout()
+      return null
+    }
+
+    const payloadData = await response.json().catch(() => null)
+    throw new Error(payloadData?.message || 'Không thể cập nhật trạng thái người dùng')
+  }
+
+  return response.json()
+}
+
 async function fetchWithAuthFallback(urls) {
   let lastError = null
 
@@ -263,6 +302,24 @@ async function fetchWithAuthFallback(urls) {
   }
 
   throw new Error('Không thể tải dữ liệu')
+}
+
+async function patchWithAuthFallback(urls, payload = null) {
+  let lastError = null
+
+  for (const url of urls) {
+    try {
+      return await patchWithAuth(url, payload)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
+  throw new Error('Không thể cập nhật trạng thái người dùng')
 }
 
 async function fetchOTP(isInitial = false) {
@@ -389,7 +446,7 @@ function renderUsers(users) {
   if (!users.length) {
     const emptyRow = document.createElement('tr')
     const emptyCell = document.createElement('td')
-    emptyCell.colSpan = 4
+    emptyCell.colSpan = 6
     emptyCell.textContent = 'Chưa có dữ liệu người dùng'
     emptyRow.appendChild(emptyCell)
     tbody.appendChild(emptyRow)
@@ -411,16 +468,71 @@ function renderUsers(users) {
     const statusCell = document.createElement('td')
     statusCell.textContent = user.is_active ? 'Đang hoạt động' : 'Đã khóa'
 
+    const reasonCell = document.createElement('td')
+    reasonCell.textContent = user.blocked_reason || '-'
+
     const createdCell = document.createElement('td')
     createdCell.textContent = new Date(user.created_at).toLocaleString('vi-VN')
+
+    const actionCell = document.createElement('td')
+    const actionBtn = document.createElement('button')
+    actionBtn.className = user.is_active ? 'user-action-btn block' : 'user-action-btn unblock'
+
+    if (user.role === 'admin') {
+      actionBtn.classList.add('disabled')
+      actionBtn.disabled = true
+      actionBtn.textContent = 'Admin'
+    } else {
+      actionBtn.textContent = user.is_active ? 'Khóa' : 'Mở khóa'
+      actionBtn.addEventListener('click', () => toggleUserBlock(user))
+    }
+    actionCell.appendChild(actionBtn)
 
     row.appendChild(emailCell)
     row.appendChild(roleCell)
     row.appendChild(statusCell)
+    row.appendChild(reasonCell)
     row.appendChild(createdCell)
+    row.appendChild(actionCell)
 
     tbody.appendChild(row)
   })
+}
+
+function applyUsersFilter() {
+  const filteredUsers = usersCache.filter((user) => {
+    if (usersStatusFilter === 'active') {
+      return user.is_active
+    }
+    if (usersStatusFilter === 'blocked') {
+      return !user.is_active
+    }
+    return true
+  })
+
+  renderUsers(filteredUsers)
+}
+
+async function toggleUserBlock(user) {
+  const statsError = document.getElementById('stats-error')
+  statsError.style.display = 'none'
+
+  try {
+    if (user.is_active) {
+      const reasonInput = window.prompt('Nhập lý do khóa tài khoản (có thể bỏ trống):', '')
+      if (reasonInput === null) {
+        return
+      }
+      await patchWithAuthFallback(BLOCK_USER_URLS(user.id), {reason: reasonInput.trim()})
+    } else {
+      await patchWithAuthFallback(UNBLOCK_USER_URLS(user.id))
+    }
+
+    await fetchStatsAndUsers()
+  } catch (error) {
+    statsError.innerText = 'Lỗi cập nhật người dùng: ' + error.message
+    showError(statsError)
+  }
 }
 
 async function fetchStatsAndUsers() {
@@ -446,7 +558,8 @@ async function fetchStatsAndUsers() {
     document.getElementById('total-users-value').innerText = totalUsers
     document.getElementById('revenue-value').innerText = formatVND(verifiedUsers * PRICE_PER_BUYER)
 
-    renderUsers(usersData.data?.users || [])
+    usersCache = usersData.data?.users || []
+    applyUsersFilter()
   } catch (error) {
     statsError.innerText = 'Lỗi tải thống kê: ' + error.message
     showError(statsError)
@@ -507,6 +620,16 @@ function bindEvents() {
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab))
+  })
+
+  document.querySelectorAll('.users-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      usersStatusFilter = btn.dataset.statusFilter || 'all'
+      document.querySelectorAll('.users-filter-btn').forEach((item) => {
+        item.classList.toggle('active', item === btn)
+      })
+      applyUsersFilter()
+    })
   })
 }
 

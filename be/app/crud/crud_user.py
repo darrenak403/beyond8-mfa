@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.crud.crud_role import crud_role
 from app.models.user import User
@@ -63,6 +64,33 @@ class CRUDUser:
             if existing is None:
                 raise
             return existing
+
+    def set_block_status(
+        self,
+        db: Session,
+        user_id: str,
+        *,
+        is_active: bool,
+        blocked_by_user_id: str | None,
+        blocked_reason: str | None = None,
+    ) -> User | None:
+        user = self.get_by_id(db, user_id)
+        if user is None:
+            return None
+
+        user.is_active = is_active
+        if is_active:
+            user.blocked_at = None
+            user.blocked_reason = None
+            user.blocked_by_user_id = None
+        else:
+            user.blocked_at = datetime.now(timezone.utc)
+            user.blocked_reason = (blocked_reason or "").strip() or None
+            user.blocked_by_user_id = blocked_by_user_id
+
+        db.add(user)
+        db.flush()
+        return user
 
 
 crud_user = CRUDUser()

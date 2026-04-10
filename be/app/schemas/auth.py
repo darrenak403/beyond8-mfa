@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class SignInRequest(BaseModel):
@@ -19,7 +19,14 @@ class UserItemResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool
+    blocked_at: datetime | None = None
+    blocked_reason: str | None = None
+    blocked_by_user_id: str | None = None
     created_at: datetime
+
+
+class BlockUserRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
 
 
 class UserListResponse(BaseModel):

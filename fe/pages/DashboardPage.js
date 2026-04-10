@@ -19,7 +19,14 @@ export function renderDashboardPage() {
           </div>
 
           <div class="users-block">
-            <div class="users-title">Danh sách người dùng</div>
+            <div class="users-header">
+              <div class="users-title">Danh sách người dùng</div>
+              <div class="users-filters" id="users-filters">
+                <button class="users-filter-btn active" data-status-filter="all">Tất cả</button>
+                <button class="users-filter-btn" data-status-filter="active">Đang hoạt động</button>
+                <button class="users-filter-btn" data-status-filter="blocked">Đã khóa</button>
+              </div>
+            </div>
             <div class="loading" id="users-loading" style="display: none; margin: 14px">
               Đang tải dữ liệu người dùng...
             </div>
@@ -31,7 +38,9 @@ export function renderDashboardPage() {
                     <th>Email</th>
                     <th>Vai trò</th>
                     <th>Trạng thái</th>
+                    <th>Lý do khóa</th>
                     <th>Ngày tạo</th>
+                    <th>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
