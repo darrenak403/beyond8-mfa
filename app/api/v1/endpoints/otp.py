@@ -15,13 +15,22 @@ router = APIRouter(prefix="/otp", tags=["OTP"])
 
 @router.get("/generate", response_model=ApiResponse[OTPGenerateResponse])
 def generate_otp(admin_user: User = Depends(get_current_admin), db: Session = Depends(get_db)):
-    otp, expires_in, version = otp_service.get_or_create_active_otp(db, issued_by_user_id=admin_user.id)
+    """
+    Generate current active OTP for admin to share.
+    Does NOT write anything to the database — purely stateless HMAC computation.
+    """
+    otp, expires_in, version = otp_service.generate_otp(db, issued_by_user_id=admin_user.id)
     response_data = OTPGenerateResponse(otp=otp, expires_in=expires_in, version=version)
     return success_response(data=response_data, message="Lấy OTP thành công")
 
 
 @router.post("/verify", response_model=ApiResponse[OTPVerifyResponse])
 def verify_otp(payload: ExternalOTPVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Verify OTP submitted by an external user.
+    On success: records audit log row + immediately rotates OTP window.
+    On failure: no DB writes.
+    """
     external_user = crud_user.get_or_create(db, payload.email.lower(), "user")
     valid, message, next_expires = otp_service.verify_and_rotate(
         db,

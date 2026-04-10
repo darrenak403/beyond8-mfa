@@ -440,7 +440,7 @@
 
         .otp-display {
           height: 80px;
-          font-size: px;
+          font-size: 22px;
           letter-spacing: 2px;
         }
       }
@@ -659,6 +659,8 @@
       const API_URL = isLocalhost ? 'http://127.0.0.1:3636/api/otp/generate' : '/api/otp/generate'
       const LOGIN_URL = isLocalhost ? 'http://127.0.0.1:3636/api/auth/login' : '/api/auth/login'
       let countdownInterval
+      let pollingInterval       // polls every 5s to detect OTP rotation by a user verify
+      let currentOtpVersion = null   // tracks rotate_count returned by /generate
 
       function getCookieToken() {
         const cookies = document.cookie.split(';')
@@ -682,6 +684,7 @@
           }
 
           fetchOTP(true)
+          startPolling()
         } else {
           showLoginScreen()
         }
@@ -692,6 +695,7 @@
         document.getElementById('otp-section').style.display = 'none'
         document.getElementById('header-logout-btn').style.display = 'none'
         clearInterval(countdownInterval)
+        clearInterval(pollingInterval)
 
         if (window.location.hostname !== '127.0.0.1' && window.location.pathname !== '/login') {
           window.history.pushState({}, '', '/login')
@@ -811,6 +815,18 @@
 
           document.getElementById('otp-display').style.opacity = '1'
           document.getElementById('otp-display').innerText = otpPayload.otp
+
+          // Detect OTP rotation: if rotate_count (version) changed, someone used the OTP
+          const newVersion = otpPayload.version
+          if (currentOtpVersion !== null && newVersion !== currentOtpVersion) {
+            // Flash the OTP display to signal it just rotated
+            const display = document.getElementById('otp-display')
+            display.style.transition = 'background 0.3s'
+            display.style.background = 'rgba(46, 204, 113, 0.15)'
+            setTimeout(() => { display.style.background = '' }, 1000)
+          }
+          currentOtpVersion = newVersion
+
           startCountdown(otpPayload.expires_in)
         } catch (error) {
           if (isInitial) document.getElementById('loading-text').style.display = 'none'
@@ -822,14 +838,38 @@
         }
       }
 
+      // Poll every 5 seconds to detect if OTP was consumed by a user verify
+      // When rotate_count changes -> fetchOTP() updates the display immediately
+      async function startPolling() {
+        clearInterval(pollingInterval)
+        const token = getCookieToken()
+        if (!token) return
+
+        pollingInterval = setInterval(async () => {
+          const t = getCookieToken()
+          if (!t) { clearInterval(pollingInterval); return }
+          try {
+            const res = await fetch(API_URL, { method: 'GET', headers: { Authorization: `Bearer ${t}` } })
+            if (!res.ok) return
+            const data = await res.json()
+            const payload = data.data
+            // If rotate_count changed -> OTP was consumed somewhere, refresh immediately
+            if (currentOtpVersion !== null && payload.version !== currentOtpVersion) {
+              fetchOTP(false)
+            }
+          } catch (_) { /* ignore poll errors */ }
+        }, 5000)
+      }
+
       function startCountdown(seconds) {
+        clearInterval(countdownInterval)
         let timeLeft = seconds
-        const totalTime = 60
+        const totalTime = seconds   // use actual expires_in as 100%, not hardcoded 60
         const timerElement = document.getElementById('timer')
         const progressElement = document.getElementById('progress')
 
         timerElement.innerText = Math.max(0, timeLeft)
-        progressElement.style.width = (Math.max(0, timeLeft) / totalTime) * 100 + '%'
+        progressElement.style.width = '100%'
 
         countdownInterval = setInterval(() => {
           timeLeft--

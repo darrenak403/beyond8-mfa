@@ -7,7 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import otp_token, otp_verification, user  # noqa: F401
+from app.models import otp_state, otp_verification, user  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

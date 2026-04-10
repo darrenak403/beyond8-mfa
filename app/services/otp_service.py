@@ -1,67 +1,60 @@
-import secrets
-from contextlib import contextmanager
+"""
+Stateless OTP Service
+=====================
+
+Flow — Generate:
+    1. Read rotate_count from DB (otp_state row).
+    2. Compute window_id = floor(now / ttl) + rotate_count.
+    3. OTP = HMAC(jwt_secret_key, window_id)   ← pure math, NO DB write.
+    4. Return OTP string + expires_in + rotate_count (as "version").
+
+Flow — Verify:
+    1. Per-user cooldown check (otp_verifications table).
+    2. Read current window_id from DB (rotate_count).
+    3. Verify HMAC(otp_raw, window_id).
+    4. Check otp_verifications: is window_id already used?
+       → Yes  : "OTP đã được sử dụng"
+       → No   : record verification + increment rotate_count (rotate NOW)
+    5. Return success + new expires_in of the NEXT OTP.
+
+Key properties:
+  - OTP is NEVER written to DB during generate.
+  - DB only gets 1 INSERT per successful verify (audit log row).
+  - rotate_count shift makes old OTP invalid for everyone immediately.
+  - Unique constraint on window_id prevents concurrent double-use.
+"""
+
 from datetime import datetime, timezone
 
-from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import text
 
 from app.core.config import settings
+from app.core.security import generate_otp_for_window, verify_otp_for_window
 from app.crud import crud_otp
-from app.models.otp_verification import OTPVerification
-
-SAFE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
 class OTPService:
-    _LOCK_KEY = 814208
 
-    @contextmanager
-    def _transaction(self, db: Session):
-        if db.in_transaction():
-            yield
-            return
+    # ------------------------------------------------------------------
+    # Generate (no DB write)
+    # ------------------------------------------------------------------
 
-        with db.begin():
-            yield
+    def generate_otp(
+        self, db: Session, issued_by_user_id: str | None = None
+    ) -> tuple[str, int, int]:
+        """
+        Return (otp_raw, expires_in_seconds, rotate_count).
+        Does NOT touch the database (except reading rotate_count).
+        """
+        rotate_count = crud_otp.get_rotate_count(db)
+        window_id = crud_otp.current_window_id(rotate_count)
+        otp_raw = generate_otp_for_window(window_id)
+        expires_in = crud_otp.seconds_until_window_flip()
+        return otp_raw, expires_in, rotate_count
 
-    def _generate_raw_otp(self) -> str:
-        random_chars = "".join(secrets.choice(SAFE_CHARS) for _ in range(12))
-        return f"{settings.key_prefix}-{random_chars[0:4]}-{random_chars[4:8]}-{random_chars[8:12]}"
-
-    def _seconds_until_expiry(self, expires_at: datetime) -> int:
-        expiry = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
-        return max(0, int((expiry - datetime.now(timezone.utc)).total_seconds()))
-
-    def get_or_create_active_otp(self, db: Session, issued_by_user_id: str | None = None) -> tuple[str, int, int]:
-        with self._transaction(db):
-            token = crud_otp.get_valid_active_token(db, lock=True)
-            if token is not None:
-                return token.otp_value, self._seconds_until_expiry(token.expires_at), token.version
-
-            raw, expires_in, version = self._force_refresh_otp_in_tx(db, issued_by_user_id=issued_by_user_id)
-            return raw, expires_in, version
-
-    def force_refresh_otp(self, db: Session, issued_by_user_id: str | None = None) -> tuple[str, int, int]:
-        with self._transaction(db):
-            return self._force_refresh_otp_in_tx(db, issued_by_user_id=issued_by_user_id)
-
-    def _force_refresh_otp_in_tx(self, db: Session, issued_by_user_id: str | None = None) -> tuple[str, int, int]:
-        # Serialize refresh/create to avoid concurrent active OTP creation.
-        db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": self._LOCK_KEY})
-        current = crud_otp.get_latest_active_token(db, lock=True)
-        version = 1
-        if current is not None:
-            # Keep OTP history only for tokens that were actually used.
-            if current.used_at is None:
-                crud_otp.delete_token(db, current)
-            else:
-                crud_otp.deactivate_token(db, current)
-            version = current.version + 1
-
-        raw = self._generate_raw_otp()
-        created = crud_otp.create_token(db, raw, issued_by_user_id=issued_by_user_id, version=version)
-        return raw, self._seconds_until_expiry(created.expires_at), created.version
+    # ------------------------------------------------------------------
+    # Verify & rotate (DB write only here)
+    # ------------------------------------------------------------------
 
     def verify_and_rotate(
         self,
@@ -70,42 +63,58 @@ class OTPService:
         otp_raw: str,
         enforce_cooldown: bool = True,
     ) -> tuple[bool, str, int | None]:
+        """
+        Returns (valid, message, next_expires_in).
+        On success:
+          - Writes 1 row to otp_verifications (audit log).
+          - Increments rotate_count → new OTP window immediately.
+        On failure: zero DB writes.
+        """
         now = datetime.now(timezone.utc)
 
-        with self._transaction(db):
-            if enforce_cooldown:
-                latest_user_verification_stmt = (
-                    select(OTPVerification)
-                    .where(OTPVerification.user_id == user_id)
-                    .order_by(desc(OTPVerification.created_at))
-                    .limit(1)
+        # 1. Per-user cooldown (read-only, outside heavy transaction)
+        if enforce_cooldown:
+            last = crud_otp.get_latest_user_verification(db, user_id)
+            if last is not None:
+                verify_time = (
+                    last.created_at.replace(tzinfo=timezone.utc)
+                    if last.created_at.tzinfo is None
+                    else last.created_at
                 )
-                latest_user_verification = db.execute(latest_user_verification_stmt).scalar_one_or_none()
-                if latest_user_verification is not None:
-                    verify_time = (
-                        latest_user_verification.created_at.replace(tzinfo=timezone.utc)
-                        if latest_user_verification.created_at.tzinfo is None
-                        else latest_user_verification.created_at
-                    )
-                    if int((now - verify_time).total_seconds()) < settings.otp_refresh_cooldown_seconds:
-                        wait_for = settings.otp_refresh_cooldown_seconds - int((now - verify_time).total_seconds())
-                        return False, f"Bạn đã verify gần đây. Vui lòng thử lại sau {wait_for}s.", None
+                elapsed = int((now - verify_time).total_seconds())
+                if elapsed < settings.otp_refresh_cooldown_seconds:
+                    wait_for = settings.otp_refresh_cooldown_seconds - elapsed
+                    return False, f"Bạn đã verify gần đây. Vui lòng thử lại sau {wait_for}s.", None
 
-            token = crud_otp.get_valid_active_token(db, lock=True)
-            if token is None:
-                _, expires_in, _ = self._force_refresh_otp_in_tx(db)
-                return False, "OTP hết hạn. Vui lòng lấy OTP mới từ admin.", expires_in
+        # 2. Compute current window (read-only)
+        rotate_count = crud_otp.get_rotate_count(db)
+        window_id = crud_otp.current_window_id(rotate_count)
 
-            if not crud_otp.verify_raw_otp(token, otp_raw.strip().upper()):
-                return False, "OTP không hợp lệ", None
+        # 3. HMAC check — pure math, no DB
+        if not verify_otp_for_window(otp_raw, window_id):
+            return False, "OTP không hợp lệ.", None
 
-            crud_otp.consume_token(db, token)
+        # 4. One-time-use check + consume atomically
+        #    Use a savepoint so the unique constraint violation is handled cleanly
+        #    without rolling back the entire outer transaction (if any).
+        try:
+            with db.begin_nested():
+                if crud_otp.is_window_used(db, window_id):
+                    expires_in = crud_otp.seconds_until_window_flip()
+                    return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", expires_in
 
-            verification = OTPVerification(user_id=user_id, otp_token_id=token.id)
-            db.add(verification)
+                # Record usage → unique constraint on window_id prevents races
+                crud_otp.record_verification(db, user_id=user_id, window_id=window_id)
+                # Increment rotate_count → new HMAC window, old OTP dead immediately
+                crud_otp.increment_rotate_count(db)
 
-            _, expires_in, _ = self._force_refresh_otp_in_tx(db)
-            return True, "Xác minh thành công. OTP đã được làm mới ngay lập tức.", expires_in
+        except Exception:
+            # Unique constraint violation: another request consumed this window first
+            expires_in = crud_otp.seconds_until_window_flip()
+            return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", expires_in
+
+        expires_in = crud_otp.seconds_until_window_flip()
+        return True, "Xác minh thành công. OTP đã được làm mới ngay lập tức.", expires_in
 
 
 otp_service = OTPService()
