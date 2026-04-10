@@ -12,7 +12,7 @@ export function renderHeader() {
       </div>
 
       <div class="header-nav" id="header-nav" style="display: none">
-        <button class="nav-btn active" data-tab="otp-tab">OTP hiện tại</button>
+        <button class="nav-btn active" data-tab="otp-tab">Lấy mã OTP</button>
         <button class="nav-btn" data-tab="stats-tab">Thống kê</button>
       </div>
 
