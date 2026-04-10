@@ -6,7 +6,7 @@ from app.models.otp_verification import OTPVerification
 
 class StatsService:
     def get_otp_verification_stats(self, db: Session) -> tuple[int, int]:
-        verified_users_stmt = select(func.count(distinct(OTPVerification.user_id)))
+        verified_users_stmt = select(func.count(OTPVerification.user_id))
         total_success_stmt = select(func.count(OTPVerification.id))
 
         verified_users = db.execute(verified_users_stmt).scalar_one()
