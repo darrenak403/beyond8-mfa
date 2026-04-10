@@ -9,15 +9,9 @@ class SignInRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
-    expires_in: int
     token_type: str = "bearer"
     role: str
     email: EmailStr
-
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str = Field(min_length=16, max_length=255)
 
 
 class SessionStatusResponse(BaseModel):
