@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -121,6 +121,19 @@ class CRUDUser:
         db.add(user)
         db.flush()
         return user
+
+    def bump_course_access_version(self, db: Session, user_id: str) -> User | None:
+        updated_user_id = db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(course_access_version=User.course_access_version + 1)
+            .returning(User.id)
+        ).scalar_one_or_none()
+        if updated_user_id is None:
+            return None
+
+        db.flush()
+        return self.get_by_id(db, user_id)
 
 
 crud_user = CRUDUser()

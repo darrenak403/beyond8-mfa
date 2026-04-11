@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, get_current_course_user, get_current_user
 from app.core.security import create_course_access_token
+from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
@@ -48,11 +49,19 @@ def verify_otp(
         user_id=current_user.id,
         otp_raw=payload.otp,
     )
+
+    issued_user = crud_user.bump_course_access_version(db, user_id=current_user.id) if valid else None
+    if valid and issued_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Không thể cấp course access token do trạng thái người dùng đã thay đổi. Vui lòng thử lại.",
+        )
+
     token = (
         create_course_access_token(
             subject=current_user.id,
             email=current_user.email,
-            course_access_version=current_user.course_access_version,
+            course_access_version=issued_user.course_access_version if issued_user is not None else current_user.course_access_version,
         )
         if valid
         else None
