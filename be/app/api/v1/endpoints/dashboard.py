@@ -18,6 +18,10 @@ def _to_user_item_response(user: User) -> UserItemResponse:
         email=user.email,
         role=user.role_name,
         is_active=user.is_active,
+        course_access_active=user.course_access_active,
+        course_access_version=user.course_access_version,
+        course_access_verified_at=user.course_access_verified_at,
+        course_access_revoked_at=user.course_access_revoked_at,
         blocked_at=user.blocked_at,
         blocked_reason=user.blocked_reason,
         blocked_by_user_id=user.blocked_by_user_id,
@@ -111,6 +115,7 @@ def unblock_user_dashboard(
 
 
 @router.patch("/users/{user_id}/course-access/revoke", response_model=ApiResponse[UserItemResponse])
+@router.patch("/getAllUser/{user_id}/course-access/revoke", response_model=ApiResponse[UserItemResponse])
 def revoke_course_access_dashboard(
     user_id: str,
     _admin_user: User = Depends(get_current_admin),
@@ -118,3 +123,14 @@ def revoke_course_access_dashboard(
 ):
     updated_user = auth_service.revoke_course_access(db, user_id=user_id)
     return success_response(data=_to_user_item_response(updated_user), message="Đã thu hồi beyond8_course_access")
+
+
+@router.patch("/users/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
+@router.patch("/getAllUser/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
+def clear_verified_otp_key_dashboard(
+    user_id: str,
+    _admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    updated_user = auth_service.clear_verified_otp_key(db, user_id=user_id)
+    return success_response(data=_to_user_item_response(updated_user), message="Đã xóa key OTP đã verify của người dùng")

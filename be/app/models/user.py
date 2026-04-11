@@ -21,7 +21,9 @@ class User(Base):
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
     # Course access revocation controls (for beyond8_course_access JWT invalidation).
+    course_access_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     course_access_version: Mapped[int] = mapped_column(default=0, nullable=False)
+    course_access_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     course_access_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

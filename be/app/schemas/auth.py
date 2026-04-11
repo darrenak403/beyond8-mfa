@@ -26,6 +26,10 @@ class UserItemResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool
+    course_access_active: bool = False
+    course_access_version: int = 0
+    course_access_verified_at: datetime | None = None
+    course_access_revoked_at: datetime | None = None
     blocked_at: datetime | None = None
     blocked_reason: str | None = None
     blocked_by_user_id: str | None = None

@@ -60,9 +60,13 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 def is_course_access_payload_active(
     payload: Dict[str, Any],
     *,
+    expected_course_access_active: bool,
     expected_course_access_version: int,
     revoked_at: datetime | None,
 ) -> bool:
+    if not expected_course_access_active:
+        return False
+
     token_version = int(payload.get("cav", 0))
     if token_version != int(expected_course_access_version):
         return False

@@ -76,7 +76,10 @@ class AuthService:
         )
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
-        return updated
+        revoked_user = crud_user.revoke_course_access(db, user_id=user.id)
+        if revoked_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+        return revoked_user
 
     def unblock_user(self, db: Session, *, user_id: str) -> User:
         user = crud_user.get_by_id(db, user_id)
@@ -99,6 +102,16 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
 
         updated = crud_user.revoke_course_access(db, user_id=user.id)
+        if updated is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+        return updated
+
+    def clear_verified_otp_key(self, db: Session, *, user_id: str) -> User:
+        user = crud_user.get_by_id(db, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
+        updated = crud_user.clear_verified_otp_key(db, user_id=user.id)
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
         return updated

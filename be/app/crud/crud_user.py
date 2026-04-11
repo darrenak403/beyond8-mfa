@@ -23,7 +23,9 @@ class CRUDUser:
         Backward-compatible guard for production environments where the latest
         migration may not have been executed yet.
         """
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_active BOOLEAN NOT NULL DEFAULT FALSE"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_version INTEGER NOT NULL DEFAULT 0"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_verified_at TIMESTAMPTZ"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_revoked_at TIMESTAMPTZ"))
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_course_access_revoked_at ON users (course_access_revoked_at)"))
 
@@ -116,6 +118,7 @@ class CRUDUser:
         if user is None:
             return None
 
+        user.course_access_active = False
         user.course_access_version = int(user.course_access_version or 0) + 1
         user.course_access_revoked_at = datetime.now(timezone.utc)
         db.add(user)
@@ -126,7 +129,12 @@ class CRUDUser:
         updated_user_id = db.execute(
             update(User)
             .where(User.id == user_id)
-            .values(course_access_version=User.course_access_version + 1)
+            .values(
+                course_access_active=True,
+                course_access_version=User.course_access_version + 1,
+                course_access_verified_at=datetime.now(timezone.utc),
+                course_access_revoked_at=None,
+            )
             .returning(User.id)
         ).scalar_one_or_none()
         if updated_user_id is None:
@@ -134,6 +142,17 @@ class CRUDUser:
 
         db.flush()
         return self.get_by_id(db, user_id)
+
+    def clear_verified_otp_key(self, db: Session, user_id: str) -> User | None:
+        user = self.get_by_id(db, user_id)
+        if user is None:
+            return None
+
+        user.course_access_active = False
+        user.course_access_revoked_at = datetime.now(timezone.utc)
+        db.add(user)
+        db.flush()
+        return user
 
 
 crud_user = CRUDUser()

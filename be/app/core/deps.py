@@ -63,6 +63,7 @@ def get_current_course_user(db: Session = Depends(get_db), token: str = Depends(
 
     if not is_course_access_payload_active(
         payload,
+        expected_course_access_active=user.course_access_active,
         expected_course_access_version=user.course_access_version,
         revoked_at=user.course_access_revoked_at,
     ):

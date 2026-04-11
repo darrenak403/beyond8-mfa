@@ -25,6 +25,12 @@ Backend đang sử dụng 2 JWT:
 - Dùng cho API cần `get_current_course_user`.
 - `cav` là course_access_version để backend revoke ngay lập tức.
 
+Ngoài claim trong token, backend lưu thêm trạng thái key theo từng user trong bảng `users`:
+- `course_access_active` (bool): user hiện có key course access đang hiệu lực hay không.
+- `course_access_version` (int): version hiện tại để so khớp claim `cav` trong token.
+- `course_access_verified_at` (timestamp): thời điểm gần nhất user verify OTP thành công.
+- `course_access_revoked_at` (timestamp): thời điểm gần nhất key bị thu hồi.
+
 ## 3. Phân quyền API
 
 ### Public (không cần token)
@@ -50,6 +56,7 @@ Backend đang sử dụng 2 JWT:
 - `PATCH /api/users/{user_id}/block`
 - `PATCH /api/users/{user_id}/unblock`
 - `PATCH /api/users/{user_id}/course-access/revoke`
+- `PATCH /api/users/{user_id}/otp-verified-key/clear`
 
 ## 4. Request / Response mẫu
 
@@ -299,6 +306,10 @@ Response:
         "email": "user@example.com",
         "role": "user",
         "is_active": true,
+        "course_access_active": true,
+        "course_access_version": 3,
+        "course_access_verified_at": "2026-04-11T12:16:16.441721+00:00",
+        "course_access_revoked_at": null,
         "blocked_at": null,
         "blocked_reason": null,
         "blocked_by_user_id": null,
@@ -337,6 +348,10 @@ Response:
     "email": "user@example.com",
     "role": "user",
     "is_active": false,
+    "course_access_active": false,
+    "course_access_version": 4,
+    "course_access_verified_at": "2026-04-11T12:16:16.441721+00:00",
+    "course_access_revoked_at": "2026-04-11T12:20:00+00:00",
     "blocked_at": "2026-04-11T12:20:00+00:00",
     "blocked_reason": "Vi phạm quy định",
     "blocked_by_user_id": "admin-id-here",
@@ -366,6 +381,10 @@ Response:
     "email": "user@example.com",
     "role": "user",
     "is_active": true,
+    "course_access_active": false,
+    "course_access_version": 4,
+    "course_access_verified_at": "2026-04-11T12:16:16.441721+00:00",
+    "course_access_revoked_at": "2026-04-11T12:20:00+00:00",
     "blocked_at": null,
     "blocked_reason": null,
     "blocked_by_user_id": null,
@@ -395,6 +414,10 @@ Response:
     "email": "user@example.com",
     "role": "user",
     "is_active": true,
+    "course_access_active": false,
+    "course_access_version": 5,
+    "course_access_verified_at": "2026-04-11T12:16:16.441721+00:00",
+    "course_access_revoked_at": "2026-04-11T12:30:00+00:00",
     "blocked_at": null,
     "blocked_reason": null,
     "blocked_by_user_id": null,
@@ -405,7 +428,47 @@ Response:
 }
 ```
 
-### 4.13 Mẫu error response chung
+### 4.13 PATCH /api/users/{user_id}/otp-verified-key/clear
+
+Request:
+
+```http
+PATCH /api/users/4634bedf-078c-42e8-8947-63bb.../otp-verified-key/clear
+Authorization: Bearer <admin_auth_token>
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "4634bedf-078c-42e8-8947-63bb...",
+    "email": "user@example.com",
+    "role": "user",
+    "is_active": true,
+    "course_access_active": false,
+    "course_access_version": 5,
+    "course_access_verified_at": "2026-04-11T12:16:16.441721+00:00",
+    "course_access_revoked_at": "2026-04-11T12:35:00+00:00",
+    "blocked_at": null,
+    "blocked_reason": null,
+    "blocked_by_user_id": null,
+    "created_at": "2026-04-11T12:16:16.441721+00:00"
+  },
+  "message": "Đã xóa key OTP đã verify của người dùng",
+  "code": 200
+}
+```
+
+### 4.14 Bảng lưu history người dùng đã verify/mua quyền học
+
+- History đang nằm ở bảng `otp_verifications`.
+- Model: `be/app/models/otp_verification.py`.
+- API thống kê/tổng hợp đang đọc bảng này tại `GET /api/stats/otp-verifications` và `GET /api/stats/otp-verifications/history`.
+- Lưu ý: đây là lịch sử verify OTP thành công (quy đổi sang "đã mua" theo nghiệp vụ hiện tại), chưa phải bảng đơn hàng/thanh toán riêng.
+
+### 4.15 Mẫu error response chung
 
 Khi thiếu token, token hết hạn, hoặc bị revoke, backend trả dạng:
 
@@ -413,7 +476,7 @@ Khi thiếu token, token hết hạn, hoặc bị revoke, backend trả dạng:
 {
   "success": false,
   "data": null,
-  "message": "Could not validate credentials",
+  "message": "Invalid or revoked course access token",
   "code": 401
 }
 ```
@@ -441,6 +504,12 @@ Khi thiếu token, token hết hạn, hoặc bị revoke, backend trả dạng:
 - Backend tăng `course_access_version` + cập nhật thời điểm revoke.
 - Mọi `beyond8_course_access` cũ của user đó lập tức không hợp lệ nữa.
 - FE dù có lưu cookie cũ vẫn bị backend trả 401.
+
+## 6.1 Luồng block user (admin)
+
+- Admin gọi `PATCH /api/users/{user_id}/block`.
+- Backend vừa khóa tài khoản (`is_active=false`) vừa thu hồi key course access (set `course_access_active=false`, tăng `course_access_version`, set `course_access_revoked_at`).
+- Vì vậy user sẽ bị out ngay ở FE khi call API tiếp theo trả `401/403`.
 
 ## 7. Cookie strategy trên FE
 
