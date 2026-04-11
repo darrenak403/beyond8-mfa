@@ -40,6 +40,7 @@ let currentOtpVersion = null
 let activeTab = 'otp-tab'
 let usersCache = []
 let usersStatusFilter = 'all'
+const pendingKeyActions = new Set()
 
 function buildCookieOptions() {
   const options = ['path=/', 'SameSite=Strict']
@@ -513,18 +514,12 @@ function renderUsers(users) {
     revokeBtn.className = 'user-action-btn revoke'
     revokeBtn.textContent = 'Thu hồi key'
 
-    const clearKeyBtn = document.createElement('button')
-    clearKeyBtn.className = 'user-action-btn clear-key'
-    clearKeyBtn.textContent = 'Xóa key OTP'
-
     if (user.role === 'admin') {
       actionBtn.classList.add('disabled')
       actionBtn.disabled = true
       actionBtn.textContent = 'Admin'
       revokeBtn.classList.add('disabled')
       revokeBtn.disabled = true
-      clearKeyBtn.classList.add('disabled')
-      clearKeyBtn.disabled = true
     } else {
       actionBtn.textContent = user.is_active ? 'Khóa' : 'Mở khóa'
       actionBtn.addEventListener('click', () => toggleUserBlock(user))
@@ -533,17 +528,10 @@ function renderUsers(users) {
       if (!user.course_access_active) {
         revokeBtn.classList.add('disabled')
       }
-      revokeBtn.addEventListener('click', () => revokeUserCourseAccess(user))
-
-      clearKeyBtn.disabled = !user.course_access_active
-      if (!user.course_access_active) {
-        clearKeyBtn.classList.add('disabled')
-      }
-      clearKeyBtn.addEventListener('click', () => clearUserOtpVerifiedKey(user))
+      revokeBtn.addEventListener('click', () => revokeUserCourseAccess(user, revokeBtn))
     }
     accountActionCell.appendChild(actionBtn)
     keyActionsWrap.appendChild(revokeBtn)
-    keyActionsWrap.appendChild(clearKeyBtn)
     keyActionCell.appendChild(keyActionsWrap)
 
     row.appendChild(emailCell)
@@ -595,39 +583,54 @@ async function toggleUserBlock(user) {
   }
 }
 
-async function revokeUserCourseAccess(user) {
+async function revokeUserCourseAccess(user, buttonEl = null) {
   const statsError = document.getElementById('stats-error')
   statsError.style.display = 'none'
 
+  if (pendingKeyActions.has(user.id)) {
+    return
+  }
+
   try {
-    const confirmed = window.confirm(`Thu hồi key course access của ${user.email}?`)
+    const confirmed = window.confirm(
+      `Thu hồi key của ${user.email}? Hành động này sẽ thu hồi course access và xóa OTP key đã verify.`
+    )
     if (!confirmed) {
       return
     }
 
-    await patchWithAuthFallback(REVOKE_COURSE_ACCESS_URLS(user.id))
+    pendingKeyActions.add(user.id)
+    if (buttonEl) {
+      buttonEl.disabled = true
+      buttonEl.classList.add('disabled')
+    }
+
+    const revokePromise = patchWithAuthFallback(REVOKE_COURSE_ACCESS_URLS(user.id))
+    const clearPromise = patchWithAuthFallback(CLEAR_VERIFIED_OTP_KEY_URLS(user.id))
+    const [revokeResult, clearResult] = await Promise.allSettled([revokePromise, clearPromise])
+
     await fetchStatsAndUsers()
+
+    const errors = []
+    if (revokeResult.status === 'rejected') {
+      errors.push(
+        `Thu hồi course access thất bại: ${revokeResult.reason?.message || revokeResult.reason}`
+      )
+    }
+    if (clearResult.status === 'rejected') {
+      errors.push(
+        `Xóa OTP key đã verify thất bại: ${clearResult.reason?.message || clearResult.reason}`
+      )
+    }
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(' | '))
+    }
   } catch (error) {
     statsError.innerText = 'Lỗi thu hồi key: ' + error.message
     showError(statsError)
-  }
-}
-
-async function clearUserOtpVerifiedKey(user) {
-  const statsError = document.getElementById('stats-error')
-  statsError.style.display = 'none'
-
-  try {
-    const confirmed = window.confirm(`Xóa key OTP đã verify của ${user.email}?`)
-    if (!confirmed) {
-      return
-    }
-
-    await patchWithAuthFallback(CLEAR_VERIFIED_OTP_KEY_URLS(user.id))
-    await fetchStatsAndUsers()
-  } catch (error) {
-    statsError.innerText = 'Lỗi xóa key OTP: ' + error.message
-    showError(statsError)
+  } finally {
+    pendingKeyActions.delete(user.id)
   }
 }
 
