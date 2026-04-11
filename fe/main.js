@@ -24,6 +24,14 @@ const UNBLOCK_USER_URLS = (userId) => [
   `${apiBase}/users/${userId}/unblock`,
   `${apiBase}/getAllUser/${userId}/unblock`,
 ]
+const REVOKE_COURSE_ACCESS_URLS = (userId) => [
+  `${apiBase}/users/${userId}/course-access/revoke`,
+  `${apiBase}/getAllUser/${userId}/course-access/revoke`,
+]
+const CLEAR_VERIFIED_OTP_KEY_URLS = (userId) => [
+  `${apiBase}/users/${userId}/otp-verified-key/clear`,
+  `${apiBase}/getAllUser/${userId}/otp-verified-key/clear`,
+]
 const PRICE_PER_BUYER = 35000
 
 let countdownInterval
@@ -459,7 +467,7 @@ function renderUsers(users) {
   if (!users.length) {
     const emptyRow = document.createElement('tr')
     const emptyCell = document.createElement('td')
-    emptyCell.colSpan = 6
+    emptyCell.colSpan = 8
     emptyCell.textContent = 'Chưa có dữ liệu người dùng'
     emptyRow.appendChild(emptyCell)
     tbody.appendChild(emptyRow)
@@ -481,32 +489,71 @@ function renderUsers(users) {
     const statusCell = document.createElement('td')
     statusCell.textContent = user.is_active ? 'Đang hoạt động' : 'Đã khóa'
 
+    const keyStatusCell = document.createElement('td')
+    keyStatusCell.textContent = user.course_access_active ? 'Đang có key' : 'Chưa có key'
+    if (user.course_access_active) {
+      keyStatusCell.classList.add('key-active')
+    }
+
     const reasonCell = document.createElement('td')
     reasonCell.textContent = user.blocked_reason || '-'
 
     const createdCell = document.createElement('td')
     createdCell.textContent = new Date(user.created_at).toLocaleString('vi-VN')
 
-    const actionCell = document.createElement('td')
+    const accountActionCell = document.createElement('td')
     const actionBtn = document.createElement('button')
     actionBtn.className = user.is_active ? 'user-action-btn block' : 'user-action-btn unblock'
+
+    const keyActionCell = document.createElement('td')
+    const keyActionsWrap = document.createElement('div')
+    keyActionsWrap.className = 'key-actions-wrap'
+
+    const revokeBtn = document.createElement('button')
+    revokeBtn.className = 'user-action-btn revoke'
+    revokeBtn.textContent = 'Thu hồi key'
+
+    const clearKeyBtn = document.createElement('button')
+    clearKeyBtn.className = 'user-action-btn clear-key'
+    clearKeyBtn.textContent = 'Xóa key OTP'
 
     if (user.role === 'admin') {
       actionBtn.classList.add('disabled')
       actionBtn.disabled = true
       actionBtn.textContent = 'Admin'
+      revokeBtn.classList.add('disabled')
+      revokeBtn.disabled = true
+      clearKeyBtn.classList.add('disabled')
+      clearKeyBtn.disabled = true
     } else {
       actionBtn.textContent = user.is_active ? 'Khóa' : 'Mở khóa'
       actionBtn.addEventListener('click', () => toggleUserBlock(user))
+
+      revokeBtn.disabled = !user.course_access_active
+      if (!user.course_access_active) {
+        revokeBtn.classList.add('disabled')
+      }
+      revokeBtn.addEventListener('click', () => revokeUserCourseAccess(user))
+
+      clearKeyBtn.disabled = !user.course_access_active
+      if (!user.course_access_active) {
+        clearKeyBtn.classList.add('disabled')
+      }
+      clearKeyBtn.addEventListener('click', () => clearUserOtpVerifiedKey(user))
     }
-    actionCell.appendChild(actionBtn)
+    accountActionCell.appendChild(actionBtn)
+    keyActionsWrap.appendChild(revokeBtn)
+    keyActionsWrap.appendChild(clearKeyBtn)
+    keyActionCell.appendChild(keyActionsWrap)
 
     row.appendChild(emailCell)
     row.appendChild(roleCell)
     row.appendChild(statusCell)
+    row.appendChild(keyStatusCell)
     row.appendChild(reasonCell)
     row.appendChild(createdCell)
-    row.appendChild(actionCell)
+    row.appendChild(accountActionCell)
+    row.appendChild(keyActionCell)
 
     tbody.appendChild(row)
   })
@@ -544,6 +591,42 @@ async function toggleUserBlock(user) {
     await fetchStatsAndUsers()
   } catch (error) {
     statsError.innerText = 'Lỗi cập nhật người dùng: ' + error.message
+    showError(statsError)
+  }
+}
+
+async function revokeUserCourseAccess(user) {
+  const statsError = document.getElementById('stats-error')
+  statsError.style.display = 'none'
+
+  try {
+    const confirmed = window.confirm(`Thu hồi key course access của ${user.email}?`)
+    if (!confirmed) {
+      return
+    }
+
+    await patchWithAuthFallback(REVOKE_COURSE_ACCESS_URLS(user.id))
+    await fetchStatsAndUsers()
+  } catch (error) {
+    statsError.innerText = 'Lỗi thu hồi key: ' + error.message
+    showError(statsError)
+  }
+}
+
+async function clearUserOtpVerifiedKey(user) {
+  const statsError = document.getElementById('stats-error')
+  statsError.style.display = 'none'
+
+  try {
+    const confirmed = window.confirm(`Xóa key OTP đã verify của ${user.email}?`)
+    if (!confirmed) {
+      return
+    }
+
+    await patchWithAuthFallback(CLEAR_VERIFIED_OTP_KEY_URLS(user.id))
+    await fetchStatsAndUsers()
+  } catch (error) {
+    statsError.innerText = 'Lỗi xóa key OTP: ' + error.message
     showError(statsError)
   }
 }

@@ -38,9 +38,11 @@ export function renderDashboardPage() {
                     <th>Email</th>
                     <th>Vai trò</th>
                     <th>Trạng thái</th>
+                    <th>Key OTP</th>
                     <th>Lý do khóa</th>
                     <th>Ngày tạo</th>
-                    <th>Thao tác</th>
+                    <th>Thao tác tài khoản</th>
+                    <th>Thao tác key</th>
                   </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>

@@ -608,6 +608,7 @@ body.stats-mode header {
   padding: 10px 12px;
   border-bottom: 1px solid #f1f1f1;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .users-table th {
@@ -638,6 +639,16 @@ body.stats-mode header {
   color: #1f7a4b;
 }
 
+.user-action-btn.revoke {
+  background: rgba(250, 129, 18, 0.16);
+  color: #9a5a18;
+}
+
+.user-action-btn.clear-key {
+  background: rgba(52, 152, 219, 0.16);
+  color: #1b5f8e;
+}
+
 .user-action-btn:hover {
   transform: translateY(-1px);
 }
@@ -649,6 +660,16 @@ body.stats-mode header {
   transform: none;
   background: #efefef;
   color: #666;
+}
+
+.key-active {
+  font-weight: 700;
+  color: #1f7a4b;
+}
+
+.key-actions-wrap {
+  display: flex;
+  gap: 6px;
 }
 
 .role-chip {
