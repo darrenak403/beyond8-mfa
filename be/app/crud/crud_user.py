@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
@@ -138,7 +138,12 @@ class CRUDUser:
         return user
 
     def bump_course_access_version(self, db: Session, user_id: str) -> User | None:
-        user = db.execute(select(User).where(User.id == user_id).with_for_update()).scalar_one_or_none()
+        user = db.execute(
+            select(User)
+            .options(lazyload(User.role))
+            .where(User.id == user_id)
+            .with_for_update(of=User)
+        ).scalar_one_or_none()
         if user is None:
             return None
 
