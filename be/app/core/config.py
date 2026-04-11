@@ -26,13 +26,28 @@ class Settings(BaseSettings):
     run_startup_bootstrap: bool = Field(default=True, alias="RUN_STARTUP_BOOTSTRAP")
 
     key_prefix: str = Field(default="BY8", alias="KEY_PREFIX")
-    cors_origins: str = Field(default="http://127.0.0.1:5500,http://localhost:5500", alias="CORS_ORIGINS")
+    cors_origins: str = Field(
+        default=(
+            "http://127.0.0.1:5500,"
+            "http://localhost:5500,"
+            "https://source.beyond8.io.vn,"
+            "https://mfa.beyond8.io.vn"
+        ),
+        alias="CORS_ORIGINS",
+    )
 
     model_config = SettingsConfigDict(env_file=_env_path, env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+        normalized: List[str] = []
+        for raw_item in self.cors_origins.split(","):
+            candidate = raw_item.strip().strip("\"'").rstrip("/")
+            if not candidate:
+                continue
+            if candidate not in normalized:
+                normalized.append(candidate)
+        return normalized
 
 
 @lru_cache
