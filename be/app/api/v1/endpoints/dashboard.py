@@ -67,9 +67,10 @@ def get_all_users_dashboard(
 def otp_verification_stats_dashboard(
     _admin: User = Depends(get_current_admin), db: Session = Depends(get_db)
 ):
-    verified_users, total_success = stats_service.get_otp_verification_stats(db)
+    verified_users, total_key_purchases, total_success = stats_service.get_otp_verification_stats(db)
     response_data = OTPStatsResponse(
         verified_users=verified_users,
+        total_key_purchases=total_key_purchases,
         total_successful_verifications=total_success,
     )
     return success_response(data=response_data, message="Lấy thống kê OTP thành công")

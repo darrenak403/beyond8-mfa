@@ -62,6 +62,7 @@ def verify_otp(
             subject=current_user.id,
             email=current_user.email,
             course_access_version=issued_user.course_access_version if issued_user is not None else current_user.course_access_version,
+            expires_at=issued_user.course_access_period_expires_at if issued_user is not None else None,
         )
         if valid
         else None

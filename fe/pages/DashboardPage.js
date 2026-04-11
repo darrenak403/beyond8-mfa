@@ -5,7 +5,7 @@ export function renderDashboardPage() {
         <div class="page-content">
           <div class="stats-grid">
             <div class="stats-card">
-              <div class="stats-label">Số người đã mua</div>
+              <div class="stats-label">Số lượt mua key</div>
               <div class="stats-value" id="verified-users-value">0</div>
             </div>
             <div class="stats-card">

@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 
 class OTPStatsResponse(BaseModel):
     verified_users: int
+    total_key_purchases: int
     total_successful_verifications: int
 
 

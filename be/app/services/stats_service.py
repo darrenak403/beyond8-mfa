@@ -7,14 +7,16 @@ from app.schemas.stats import OTPVerificationHistoryItem
 
 
 class StatsService:
-    def get_otp_verification_stats(self, db: Session) -> tuple[int, int]:
-        verified_users_stmt = select(func.count(func.distinct(OTPVerification.user_id)))
+    def get_otp_verification_stats(self, db: Session) -> tuple[int, int, int]:
+        verified_users_stmt = select(func.count(User.id)).where(User.course_access_purchase_count > 0)
+        total_key_purchases_stmt = select(func.coalesce(func.sum(User.course_access_purchase_count), 0))
         total_success_stmt = select(func.count(OTPVerification.id))
 
         verified_users = db.execute(verified_users_stmt).scalar_one()
+        total_key_purchases = db.execute(total_key_purchases_stmt).scalar_one()
         total_success = db.execute(total_success_stmt).scalar_one()
 
-        return int(verified_users or 0), int(total_success or 0)
+        return int(verified_users or 0), int(total_key_purchases or 0), int(total_success or 0)
 
     def get_otp_verification_history(
         self,

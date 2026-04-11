@@ -650,12 +650,15 @@ async function fetchStatsAndUsers() {
       return
     }
 
-    const verifiedUsers = statsData.data?.verified_users || 0
+    const totalKeyPurchases =
+      statsData.data?.total_key_purchases ?? statsData.data?.total_successful_verifications ?? 0
     const totalUsers = usersData.data?.total_users || 0
 
-    document.getElementById('verified-users-value').innerText = verifiedUsers
+    document.getElementById('verified-users-value').innerText = totalKeyPurchases
     document.getElementById('total-users-value').innerText = totalUsers
-    document.getElementById('revenue-value').innerText = formatVND(verifiedUsers * PRICE_PER_BUYER)
+    document.getElementById('revenue-value').innerText = formatVND(
+      totalKeyPurchases * PRICE_PER_BUYER
+    )
 
     usersCache = usersData.data?.users || []
     applyUsersFilter()

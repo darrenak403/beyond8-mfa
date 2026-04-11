@@ -37,9 +37,18 @@ def access_token_expires_in_seconds() -> int:
     return max(1, settings.jwt_access_token_expire_minutes * 60)
 
 
-def create_course_access_token(subject: str, email: str, course_access_version: int = 0) -> str:
+def create_course_access_token(
+    subject: str,
+    email: str,
+    course_access_version: int = 0,
+    expires_at: datetime | None = None,
+) -> str:
     issued_at = datetime.now(timezone.utc)
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.course_access_token_expire_days)
+    expire = expires_at if expires_at is not None else (datetime.now(timezone.utc) + timedelta(days=settings.course_access_token_expire_days))
+    if expire.tzinfo is None:
+        expire = expire.replace(tzinfo=timezone.utc)
+    else:
+        expire = expire.astimezone(timezone.utc)
     payload: Dict[str, Any] = {
         "sub": subject,
         "email": email,

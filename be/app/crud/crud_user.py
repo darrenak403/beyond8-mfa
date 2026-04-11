@@ -1,9 +1,10 @@
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from app.core.config import settings
 from app.crud.crud_role import crud_role
 from app.models.user import User
 
@@ -26,8 +27,19 @@ class CRUDUser:
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_active BOOLEAN NOT NULL DEFAULT FALSE"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_version INTEGER NOT NULL DEFAULT 0"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_verified_at TIMESTAMPTZ"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_period_started_at TIMESTAMPTZ"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_period_expires_at TIMESTAMPTZ"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_purchase_count INTEGER NOT NULL DEFAULT 0"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_revoked_at TIMESTAMPTZ"))
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_course_access_revoked_at ON users (course_access_revoked_at)"))
+
+    @staticmethod
+    def _as_utc(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     def get_by_id(self, db: Session, user_id: str) -> User | None:
         stmt = select(User).where(User.id == user_id)
@@ -126,22 +138,27 @@ class CRUDUser:
         return user
 
     def bump_course_access_version(self, db: Session, user_id: str) -> User | None:
-        updated_user_id = db.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(
-                course_access_active=True,
-                course_access_version=User.course_access_version + 1,
-                course_access_verified_at=datetime.now(timezone.utc),
-                course_access_revoked_at=None,
-            )
-            .returning(User.id)
-        ).scalar_one_or_none()
-        if updated_user_id is None:
+        user = db.execute(select(User).where(User.id == user_id).with_for_update()).scalar_one_or_none()
+        if user is None:
             return None
 
+        now = datetime.now(timezone.utc)
+        active_period_expires_at = self._as_utc(user.course_access_period_expires_at)
+        should_start_new_purchase_period = active_period_expires_at is None or now >= active_period_expires_at
+
+        if should_start_new_purchase_period:
+            user.course_access_purchase_count = int(user.course_access_purchase_count or 0) + 1
+            user.course_access_period_started_at = now
+            user.course_access_period_expires_at = now + timedelta(days=settings.course_access_token_expire_days)
+
+        user.course_access_active = True
+        user.course_access_version = int(user.course_access_version or 0) + 1
+        user.course_access_verified_at = now
+        user.course_access_revoked_at = None
+
+        db.add(user)
         db.flush()
-        return self.get_by_id(db, user_id)
+        return user
 
     def clear_verified_otp_key(self, db: Session, user_id: str) -> User | None:
         user = self.get_by_id(db, user_id)
