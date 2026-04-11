@@ -18,6 +18,15 @@ class CRUDUser:
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason VARCHAR(255)"))
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by_user_id VARCHAR(36)"))
 
+    def ensure_course_access_columns(self, db: Session) -> None:
+        """
+        Backward-compatible guard for production environments where the latest
+        migration may not have been executed yet.
+        """
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_version INTEGER NOT NULL DEFAULT 0"))
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_revoked_at TIMESTAMPTZ"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_course_access_revoked_at ON users (course_access_revoked_at)"))
+
     def get_by_id(self, db: Session, user_id: str) -> User | None:
         stmt = select(User).where(User.id == user_id)
         return db.execute(stmt).scalar_one_or_none()
@@ -98,6 +107,17 @@ class CRUDUser:
             user.blocked_reason = (blocked_reason or "").strip() or None
             user.blocked_by_user_id = blocked_by_user_id
 
+        db.add(user)
+        db.flush()
+        return user
+
+    def revoke_course_access(self, db: Session, user_id: str) -> User | None:
+        user = self.get_by_id(db, user_id)
+        if user is None:
+            return None
+
+        user.course_access_version = int(user.course_access_version or 0) + 1
+        user.course_access_revoked_at = datetime.now(timezone.utc)
         db.add(user)
         db.flush()
         return user

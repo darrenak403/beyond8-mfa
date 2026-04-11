@@ -5,6 +5,8 @@ create table if not exists users (
   email text not null unique,
   role_id uuid not null,
   is_active boolean not null default true,
+  course_access_version int not null default 0,
+  course_access_revoked_at timestamptz null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_admin, get_current_user
+from app.core.deps import get_current_admin, get_current_course_user, get_current_user
 from app.core.security import create_course_access_token
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
-from app.schemas.otp import ExternalOTPVerifyRequest, OTPGenerateResponse, OTPVerifyResponse
+from app.schemas.otp import CourseAccessStatusResponse, ExternalOTPVerifyRequest, OTPGenerateResponse, OTPVerifyResponse
 from app.services import otp_service
 
 router = APIRouter(prefix="/otp", tags=["OTP"])
@@ -48,6 +48,24 @@ def verify_otp(
         user_id=current_user.id,
         otp_raw=payload.otp,
     )
-    token = create_course_access_token(subject=current_user.id) if valid else None
+    token = (
+        create_course_access_token(
+            subject=current_user.id,
+            email=current_user.email,
+            course_access_version=current_user.course_access_version,
+        )
+        if valid
+        else None
+    )
     response_data = OTPVerifyResponse(valid=valid, message=message, next_otp_expires_in=next_expires, token=token)
     return success_response(data=response_data, message="Xác minh OTP thành công" if valid else message)
+
+
+@router.get("/course-access/status", response_model=ApiResponse[CourseAccessStatusResponse])
+def course_access_status(current_user: User = Depends(get_current_course_user)):
+    response_data = CourseAccessStatusResponse(
+        active=True,
+        user_id=current_user.id,
+        email=current_user.email,
+    )
+    return success_response(data=response_data, message="Course access token hợp lệ")

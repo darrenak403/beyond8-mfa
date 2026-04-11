@@ -18,12 +18,13 @@ SAFE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 # ---------------------------------------------------------------------------
 
 
-def create_access_token(subject: str, role: str, session_id: str | None = None) -> str:
+def create_access_token(subject: str, role: str, email: str, session_id: str | None = None) -> str:
     issued_at = datetime.now(timezone.utc)
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
     payload: Dict[str, Any] = {
         "sub": subject,
         "role": role,
+        "email": email,
         "iat": int(issued_at.timestamp()),
         "exp": expire,
     }
@@ -36,11 +37,17 @@ def access_token_expires_in_seconds() -> int:
     return max(1, settings.jwt_access_token_expire_minutes * 60)
 
 
-def create_course_access_token(subject: str) -> str:
+def create_course_access_token(subject: str, email: str, course_access_version: int = 0) -> str:
+    issued_at = datetime.now(timezone.utc)
     expire = datetime.now(timezone.utc) + timedelta(days=settings.course_access_token_expire_days)
     payload: Dict[str, Any] = {
         "sub": subject,
+        "email": email,
         "role": "course_viewer",
+        "iat": int(issued_at.timestamp()),
+        "cav": int(course_access_version),
+        "course_access_ttl_days": settings.course_access_token_expire_days,
+        "course_access_expires_at": int(expire.timestamp()),
         "exp": expire,
     }
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
@@ -48,6 +55,31 @@ def create_course_access_token(subject: str) -> str:
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+
+
+def is_course_access_payload_active(
+    payload: Dict[str, Any],
+    *,
+    expected_course_access_version: int,
+    revoked_at: datetime | None,
+) -> bool:
+    token_version = int(payload.get("cav", 0))
+    if token_version != int(expected_course_access_version):
+        return False
+
+    if revoked_at is None:
+        return True
+
+    token_iat = payload.get("iat")
+    if token_iat is None:
+        return False
+    try:
+        token_iat_int = int(token_iat)
+    except (TypeError, ValueError):
+        return False
+
+    revoked_ts = int(revoked_at.timestamp())
+    return token_iat_int > revoked_ts
 
 
 # ---------------------------------------------------------------------------

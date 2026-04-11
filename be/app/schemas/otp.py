@@ -21,3 +21,9 @@ class OTPVerifyResponse(BaseModel):
     message: str
     next_otp_expires_in: int | None = None
     token: str | None = None
+
+
+class CourseAccessStatusResponse(BaseModel):
+    active: bool
+    user_id: str
+    email: str

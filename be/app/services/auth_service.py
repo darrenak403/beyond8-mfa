@@ -37,7 +37,7 @@ class AuthService:
                 detail="Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
             )
 
-        token = create_access_token(subject=user.id, role=user.role_name)
+        token = create_access_token(subject=user.id, role=user.role_name, email=user.email)
         return token, user
 
     def get_all_users(
@@ -89,6 +89,16 @@ class AuthService:
             is_active=True,
             blocked_by_user_id=None,
         )
+        if updated is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+        return updated
+
+    def revoke_course_access(self, db: Session, *, user_id: str) -> User:
+        user = crud_user.get_by_id(db, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
+        updated = crud_user.revoke_course_access(db, user_id=user.id)
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
         return updated

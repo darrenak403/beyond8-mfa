@@ -6,7 +6,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.auth import BlockUserRequest, UserItemResponse, UserListResponse
-from app.schemas.stats import OTPStatsResponse
+from app.schemas.stats import OTPStatsResponse, OTPVerificationHistoryResponse
 from app.services import auth_service, stats_service
 
 router = APIRouter(tags=["Dashboard"])
@@ -71,6 +71,17 @@ def otp_verification_stats_dashboard(
     return success_response(data=response_data, message="Lấy thống kê OTP thành công")
 
 
+@router.get("/otp-verifications/history", response_model=ApiResponse[OTPVerificationHistoryResponse])
+def otp_verification_history_dashboard(
+    _admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+    user_id: str | None = Query(default=None),
+):
+    items = stats_service.get_otp_verification_history(db, user_id=user_id)
+    response_data = OTPVerificationHistoryResponse(total_users=len(items), items=items)
+    return success_response(data=response_data, message="Lấy lịch sử verify OTP thành công")
+
+
 @router.patch("/users/{user_id}/block", response_model=ApiResponse[UserItemResponse])
 @router.patch("/getAllUser/{user_id}/block", response_model=ApiResponse[UserItemResponse])
 def block_user_dashboard(
@@ -97,3 +108,13 @@ def unblock_user_dashboard(
 ):
     updated_user = auth_service.unblock_user(db, user_id=user_id)
     return success_response(data=_to_user_item_response(updated_user), message="Đã mở khóa người dùng")
+
+
+@router.patch("/users/{user_id}/course-access/revoke", response_model=ApiResponse[UserItemResponse])
+def revoke_course_access_dashboard(
+    user_id: str,
+    _admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    updated_user = auth_service.revoke_course_access(db, user_id=user_id)
+    return success_response(data=_to_user_item_response(updated_user), message="Đã thu hồi beyond8_course_access")

@@ -26,6 +26,7 @@ async def lifespan(_: FastAPI):
         db = SessionLocal()
         try:
             crud_user.ensure_block_columns(db)
+            crud_user.ensure_course_access_columns(db)
             crud_role.ensure_seed_roles(db)
             crud_user.get_or_create(db, settings.seed_admin_email.lower(), "admin")
             db.commit()
