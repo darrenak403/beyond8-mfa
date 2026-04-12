@@ -25,6 +25,7 @@ def _to_user_item_response(user: User) -> UserItemResponse:
         blocked_at=user.blocked_at,
         blocked_reason=user.blocked_reason,
         blocked_by_user_id=user.blocked_by_user_id,
+        last_generated_otp=user.last_generated_otp,
         created_at=user.created_at,
     )
 

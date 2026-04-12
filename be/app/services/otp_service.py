@@ -23,6 +23,8 @@ class OTPService:
             user_id=target_user_id,
             otp_rotate_count=rotate_count,
         )
+        crud_otp.save_last_generated_otp(db, user_id=target_user_id, otp_value=otp_raw)
+        db.commit()
         return otp_raw, None, rotate_count
 
     # ------------------------------------------------------------------
@@ -81,7 +83,12 @@ class OTPService:
                     window_id=window_id,
                     otp_rotate_count=rotate_count,
                 )
-                crud_otp.increment_user_rotate_count(db, user_id=user_id)
+                new_rotate_count = crud_otp.increment_user_rotate_count(db, user_id=user_id)
+                new_otp = generate_otp_for_user_window(
+                    user_id=user_id,
+                    otp_rotate_count=new_rotate_count,
+                )
+                crud_otp.save_last_generated_otp(db, user_id=user_id, otp_value=new_otp)
 
         except IntegrityError:
             return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", None

@@ -33,6 +33,7 @@ class UserItemResponse(BaseModel):
     blocked_at: datetime | None = None
     blocked_reason: str | None = None
     blocked_by_user_id: str | None = None
+    last_generated_otp: str | None = None
     created_at: datetime
 
 

@@ -69,6 +69,15 @@ class CRUDOTP:
         db.flush()
         return int(user.otp_rotate_count)
 
+    def save_last_generated_otp(self, db: Session, user_id: str, otp_value: str) -> None:
+        stmt = select(User).where(User.id == user_id).limit(1)
+        user = db.execute(stmt).scalar_one_or_none()
+        if user is None:
+            raise ValueError("User not found")
+        user.last_generated_otp = otp_value
+        db.add(user)
+        db.flush()
+
     def is_counter_used(self, db: Session, user_id: str, otp_rotate_count: int) -> bool:
         stmt = (
             select(OTPVerification)
