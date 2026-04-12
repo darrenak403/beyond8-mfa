@@ -4,40 +4,12 @@
     {
       "src": "be/app/main.py",
       "use": "@vercel/python"
-    },
-    {
-      "src": "fe/**/*",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "public/**/*",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "be/app/main.py"
-    },
-    {
-      "src": "/login",
-      "dest": "fe/index.html"
-    },
-    {
-      "src": "/admin/key",
-      "dest": "fe/index.html"
-    },
-    {
-      "src": "/",
-      "dest": "fe/index.html"
-    },
-    {
-      "src": "/public/(.*)",
-      "dest": "public/$1"
-    },
-    {
       "src": "/(.*)",
-      "dest": "fe/$1"
+      "dest": "be/app/main.py"
     }
   ]
 }

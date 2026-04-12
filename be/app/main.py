@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -46,6 +46,11 @@ app = FastAPI(
     redoc_url="/api/redoc",
     lifespan=lifespan,
 )
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect_to_docs():
+    return RedirectResponse(url="/api/docs", status_code=307)
 
 if not settings.database_url:
     raise RuntimeError("DATABASE_URL is required for Supabase Postgres connection")
