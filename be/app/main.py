@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.crud import crud_role, crud_user
+from app.crud import crud_otp, crud_role, crud_user
 from app.db.session import SessionLocal
 from app.schemas.api_response import error_response
 
@@ -27,6 +27,8 @@ async def lifespan(_: FastAPI):
         try:
             crud_user.ensure_block_columns(db)
             crud_user.ensure_course_access_columns(db)
+            crud_user.ensure_otp_columns(db)
+            crud_otp.ensure_otp_verification_columns(db)
             crud_role.ensure_seed_roles(db)
             crud_user.get_or_create(db, settings.seed_admin_email.lower(), "admin")
             db.commit()

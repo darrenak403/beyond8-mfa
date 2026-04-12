@@ -1,35 +1,12 @@
-"""
-Stateless OTP Service
-=====================
-
-Flow — Generate:
-    1. Read rotate_count from DB (otp_state row).
-    2. Compute window_id = floor(now / ttl) + rotate_count.
-    3. OTP = HMAC(jwt_secret_key, window_id)   ← pure math, NO DB write.
-    4. Return OTP string + expires_in + rotate_count (as "version").
-
-Flow — Verify:
-    1. Per-user cooldown check (otp_verifications table).
-    2. Read current window_id from DB (rotate_count).
-    3. Verify HMAC(otp_raw, window_id).
-    4. Check otp_verifications: is window_id already used?
-       → Yes  : "OTP đã được sử dụng"
-       → No   : record verification + increment rotate_count (rotate NOW)
-    5. Return success + new expires_in of the NEXT OTP.
-
-Key properties:
-  - OTP is NEVER written to DB during generate.
-  - DB only gets 1 INSERT per successful verify (audit log row).
-  - rotate_count shift makes old OTP invalid for everyone immediately.
-  - Unique constraint on window_id prevents concurrent double-use.
-"""
+"""Per-user stateless OTP service."""
 
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import generate_otp_for_window, verify_otp_for_window
+from app.core.security import generate_otp_for_user_window, verify_otp_for_user_window
 from app.crud import crud_otp
 
 
@@ -39,18 +16,14 @@ class OTPService:
     # Generate (no DB write)
     # ------------------------------------------------------------------
 
-    def generate_otp(
-        self, db: Session, issued_by_user_id: str | None = None
-    ) -> tuple[str, int, int]:
-        """
-        Return (otp_raw, expires_in_seconds, rotate_count).
-        Does NOT touch the database (except reading rotate_count).
-        """
-        rotate_count = crud_otp.get_rotate_count(db)
-        window_id = crud_otp.current_window_id(rotate_count)
-        otp_raw = generate_otp_for_window(window_id)
-        expires_in = crud_otp.seconds_until_window_flip()
-        return otp_raw, expires_in, rotate_count
+    def generate_otp(self, db: Session, target_user_id: str) -> tuple[str, int | None, int]:
+        """Return (otp_raw, expires_in_seconds, user_rotate_count)."""
+        rotate_count = crud_otp.get_user_rotate_count(db, target_user_id)
+        otp_raw = generate_otp_for_user_window(
+            user_id=target_user_id,
+            otp_rotate_count=rotate_count,
+        )
+        return otp_raw, None, rotate_count
 
     # ------------------------------------------------------------------
     # Verify & rotate (DB write only here)
@@ -86,35 +59,34 @@ class OTPService:
                     wait_for = settings.otp_refresh_cooldown_seconds - elapsed
                     return False, f"Bạn đã verify gần đây. Vui lòng thử lại sau {wait_for}s.", None
 
-        # 2. Compute current window (read-only)
-        rotate_count = crud_otp.get_rotate_count(db)
-        window_id = crud_otp.current_window_id(rotate_count)
-
-        # 3. HMAC check — pure math, no DB
-        if not verify_otp_for_window(otp_raw, window_id):
-            return False, "OTP không hợp lệ.", None
-
-        # 4. One-time-use check + consume atomically
-        #    Use a savepoint so the unique constraint violation is handled cleanly
-        #    without rolling back the entire outer transaction (if any).
+        # 2. One-time-use + verify under user row lock
         try:
             with db.begin_nested():
-                if crud_otp.is_window_used(db, window_id):
-                    expires_in = crud_otp.seconds_until_window_flip()
-                    return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", expires_in
+                rotate_count = crud_otp.get_user_rotate_count_for_update(db, user_id)
+                window_id = rotate_count
 
-                # Record usage → unique constraint on window_id prevents races
-                crud_otp.record_verification(db, user_id=user_id, window_id=window_id)
-                # Increment rotate_count → new HMAC window, old OTP dead immediately
-                crud_otp.increment_rotate_count(db)
+                if not verify_otp_for_user_window(
+                    otp_raw=otp_raw,
+                    user_id=user_id,
+                    otp_rotate_count=rotate_count,
+                ):
+                    return False, "OTP không hợp lệ.", None
 
-        except Exception:
-            # Unique constraint violation: another request consumed this window first
-            expires_in = crud_otp.seconds_until_window_flip()
-            return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", expires_in
+                if crud_otp.is_counter_used(db, user_id=user_id, otp_rotate_count=rotate_count):
+                    return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", None
 
-        expires_in = crud_otp.seconds_until_window_flip()
-        return True, "Xác minh thành công. OTP đã được làm mới ngay lập tức.", expires_in
+                crud_otp.record_verification(
+                    db,
+                    user_id=user_id,
+                    window_id=window_id,
+                    otp_rotate_count=rotate_count,
+                )
+                crud_otp.increment_user_rotate_count(db, user_id=user_id)
+
+        except IntegrityError:
+            return False, "OTP này đã được sử dụng. Vui lòng lấy OTP mới từ admin.", None
+
+        return True, "Xác minh thành công. OTP mới đã được kích hoạt tự động.", None
 
 
 otp_service = OTPService()

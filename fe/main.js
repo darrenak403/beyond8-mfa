@@ -1,5 +1,4 @@
 import {renderHeader} from './components/Header.js'
-import {renderOTPPage} from './pages/OTPPage.js'
 import {renderDashboardPage} from './pages/DashboardPage.js'
 
 const isLocalhost =
@@ -36,10 +35,10 @@ const PRICE_PER_BUYER = 35000
 
 let countdownInterval
 let pollingInterval
-let currentOtpVersion = null
-let activeTab = 'otp-tab'
+let activeTab = 'stats-tab'
 let usersCache = []
 let usersStatusFilter = 'all'
+const latestGeneratedOtpByUserId = new Map()
 const pendingKeyActions = new Set()
 
 function buildCookieOptions() {
@@ -49,13 +48,6 @@ function buildCookieOptions() {
   }
   return options.join('; ')
 }
-
-const ORIGINAL_COPY_HTML = `
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-  </svg>
-  Sao chép nhanh
-`
 
 function buildAppShell() {
   return `
@@ -105,7 +97,6 @@ function buildAppShell() {
         </div>
 
         <div id="otp-section" style="display: none; transition: opacity 0.3s">
-          ${renderOTPPage()}
           ${renderDashboardPage()}
         </div>
       </div>
@@ -168,8 +159,6 @@ function switchTab(tabId) {
 function showLoginScreen() {
   document.getElementById('login-section').style.display = 'block'
   document.getElementById('otp-section').style.display = 'none'
-  document.getElementById('header-nav').style.display = 'none'
-  document.getElementById('header-logout-btn').style.display = 'none'
   clearInterval(countdownInterval)
   clearInterval(pollingInterval)
 
@@ -184,16 +173,13 @@ function checkAuth() {
   if (token) {
     document.getElementById('login-section').style.display = 'none'
     document.getElementById('otp-section').style.display = 'block'
-    document.getElementById('header-nav').style.display = 'flex'
-    document.getElementById('header-logout-btn').style.display = 'block'
 
     if (window.location.hostname !== '127.0.0.1' && window.location.pathname !== '/admin/key') {
       window.history.pushState({}, '', '/admin/key')
     }
 
-    switchTab('otp-tab')
-    fetchOTP(true)
-    startPolling()
+    switchTab('stats-tab')
+    startOtpAutoRefresh()
     return
   }
 
@@ -249,9 +235,15 @@ function handleLogout() {
   setTimeout(() => {
     document.cookie = 'auth_token=; path=/; max-age=0'
     document.getElementById('email-input').value = ''
+    clearInterval(pollingInterval)
+    latestGeneratedOtpByUserId.clear()
     document.getElementById('otp-section').style.opacity = '1'
     showLoginScreen()
   }, 300)
+}
+
+function buildOtpGenerateUrl(targetEmail) {
+  return `${OTP_API_URL}?target_email=${encodeURIComponent(targetEmail.trim().toLowerCase())}`
 }
 
 async function fetchWithAuth(url) {
@@ -344,121 +336,140 @@ async function patchWithAuthFallback(urls, payload = null) {
   throw new Error('Không thể cập nhật trạng thái người dùng')
 }
 
-async function fetchOTP(isInitial = false) {
-  clearInterval(countdownInterval)
-
-  if (isInitial) {
-    document.getElementById('loading-text').style.display = 'block'
-    document.getElementById('otp-display').style.display = 'none'
-    document.getElementById('copy-btn').style.display = 'none'
-    document.getElementById('countdown-text').style.display = 'none'
-    document.getElementById('progress-container').style.display = 'none'
-  } else {
-    document.getElementById('otp-display').style.opacity = '0.5'
+function getLatestOtpDisplay(userId) {
+  const latest = latestGeneratedOtpByUserId.get(userId)
+  if (!latest) {
+    return '-'
   }
+  return latest.otp
+}
 
-  document.getElementById('error-message').style.display = 'none'
-
+async function copyTextToClipboard(text) {
   try {
-    const data = await fetchWithAuth(OTP_API_URL)
-    if (!data) {
-      return
-    }
-
-    const otpPayload = data.data
-
-    if (isInitial) {
-      document.getElementById('loading-text').style.display = 'none'
-      document.getElementById('otp-display').style.display = 'flex'
-      document.getElementById('copy-btn').style.display = 'flex'
-      document.getElementById('countdown-text').style.display = 'flex'
-      document.getElementById('progress-container').style.display = 'block'
-    }
-
-    document.getElementById('otp-display').style.opacity = '1'
-    document.getElementById('otp-display').innerText = otpPayload.otp
-
-    const newVersion = otpPayload.version
-    if (currentOtpVersion !== null && newVersion !== currentOtpVersion) {
-      const display = document.getElementById('otp-display')
-      display.style.transition = 'background 0.3s'
-      display.style.background = 'rgba(46, 204, 113, 0.15)'
-      setTimeout(() => {
-        display.style.background = ''
-      }, 1000)
-    }
-
-    currentOtpVersion = newVersion
-    startCountdown(otpPayload.expires_in)
-  } catch (error) {
-    if (isInitial) {
-      document.getElementById('loading-text').style.display = 'none'
-    }
-
-    document.getElementById('otp-display').style.opacity = '1'
-    const errorEl = document.getElementById('error-message')
-    errorEl.style.display = 'block'
-    errorEl.innerText = 'Lỗi: ' + error.message
+    await navigator.clipboard.writeText(text)
+  } catch (_) {
+    // Ignore clipboard errors on unsupported browsers.
   }
 }
 
-async function startPolling() {
-  clearInterval(pollingInterval)
-  const token = getCookieToken()
-  if (!token) {
+function renderLatestOtpCell(latestOtpCell, userId) {
+  latestOtpCell.className = 'otp-inline-value'
+  latestOtpCell.innerHTML = ''
+
+  const latest = latestGeneratedOtpByUserId.get(userId)
+  if (!latest) {
+    latestOtpCell.textContent = '-'
     return
   }
 
-  pollingInterval = setInterval(async () => {
-    const t = getCookieToken()
-    if (!t) {
-      clearInterval(pollingInterval)
-      return
+  const wrap = document.createElement('div')
+  wrap.className = 'otp-inline-wrap'
+
+  const valueEl = document.createElement('span')
+  valueEl.className = 'otp-inline-text'
+  valueEl.textContent = latest.otp
+
+  const copyBtn = document.createElement('button')
+  copyBtn.type = 'button'
+  copyBtn.className = 'otp-inline-copy-btn'
+  copyBtn.textContent = 'Copy nhanh'
+  copyBtn.addEventListener('click', async () => {
+    await copyTextToClipboard(latest.otp)
+    copyBtn.textContent = 'Da copy'
+    setTimeout(() => {
+      copyBtn.textContent = 'Copy nhanh'
+    }, 1200)
+  })
+
+  wrap.appendChild(valueEl)
+  wrap.appendChild(copyBtn)
+  latestOtpCell.appendChild(wrap)
+}
+
+async function generateOtpForUser(user, buttonEl) {
+  const statsError = document.getElementById('stats-error')
+  statsError.style.display = 'none'
+
+  if (buttonEl) {
+    buttonEl.disabled = true
+    buttonEl.classList.add('disabled')
+  }
+
+  try {
+    const data = await fetchWithAuth(buildOtpGenerateUrl(user.email))
+    if (!data?.data?.otp) {
+      throw new Error('Backend không trả về OTP hợp lệ')
+    }
+
+    latestGeneratedOtpByUserId.set(user.id, {
+      otp: data.data.otp,
+      generatedAt: Date.now(),
+      expiresIn: data.data.expires_in,
+      targetEmail: data.data.target_email,
+      version: data.data.version,
+    })
+
+    applyUsersFilter()
+    startOtpAutoRefresh()
+  } catch (error) {
+    statsError.innerText = 'Lỗi lấy OTP: ' + error.message
+    showError(statsError)
+  } finally {
+    if (buttonEl) {
+      buttonEl.disabled = false
+      buttonEl.classList.remove('disabled')
+    }
+  }
+}
+
+async function refreshTrackedOtps() {
+  if (latestGeneratedOtpByUserId.size === 0) {
+    return
+  }
+
+  const usersById = new Map(usersCache.map((user) => [user.id, user]))
+  let hasAnyUpdate = false
+
+  for (const [userId, existing] of latestGeneratedOtpByUserId.entries()) {
+    const user = usersById.get(userId)
+    if (!user) {
+      latestGeneratedOtpByUserId.delete(userId)
+      hasAnyUpdate = true
+      continue
     }
 
     try {
-      const data = await fetchWithAuth(OTP_API_URL)
-      if (!data) {
-        return
+      const data = await fetchWithAuth(buildOtpGenerateUrl(user.email))
+      const next = data?.data
+      if (!next?.otp) {
+        continue
       }
 
-      const payload = data.data
-      if (currentOtpVersion !== null && payload.version !== currentOtpVersion) {
-        fetchOTP(false)
-        if (activeTab === 'stats-tab') {
-          fetchStatsAndUsers()
-        }
+      if (next.version !== existing.version || next.otp !== existing.otp) {
+        latestGeneratedOtpByUserId.set(userId, {
+          otp: next.otp,
+          generatedAt: Date.now(),
+          expiresIn: next.expires_in,
+          targetEmail: next.target_email,
+          version: next.version,
+        })
+        hasAnyUpdate = true
       }
     } catch (_) {
-      // Polling errors are ignored to avoid noisy UI.
+      // Ignore periodic refresh errors to avoid noisy UI.
     }
-  }, 5000)
+  }
+
+  if (hasAnyUpdate) {
+    applyUsersFilter()
+  }
 }
 
-function startCountdown(seconds) {
-  clearInterval(countdownInterval)
-  let timeLeft = seconds
-  const totalTime = seconds
-  const timerElement = document.getElementById('timer')
-  const progressElement = document.getElementById('progress')
-
-  timerElement.innerText = Math.max(0, timeLeft)
-  progressElement.style.width = '100%'
-
-  countdownInterval = setInterval(() => {
-    timeLeft -= 1
-    if (timeLeft <= 0) {
-      clearInterval(countdownInterval)
-      fetchOTP()
-      if (activeTab === 'stats-tab') {
-        fetchStatsAndUsers()
-      }
-      return
-    }
-
-    timerElement.innerText = timeLeft
-    progressElement.style.width = (timeLeft / totalTime) * 100 + '%'
-  }, 1000)
+function startOtpAutoRefresh() {
+  clearInterval(pollingInterval)
+  pollingInterval = setInterval(() => {
+    refreshTrackedOtps()
+  }, 5000)
 }
 
 function renderUsers(users) {
@@ -468,7 +479,7 @@ function renderUsers(users) {
   if (!users.length) {
     const emptyRow = document.createElement('tr')
     const emptyCell = document.createElement('td')
-    emptyCell.colSpan = 8
+    emptyCell.colSpan = 9
     emptyCell.textContent = 'Chưa có dữ liệu người dùng'
     emptyRow.appendChild(emptyCell)
     tbody.appendChild(emptyRow)
@@ -496,6 +507,9 @@ function renderUsers(users) {
       keyStatusCell.classList.add('key-active')
     }
 
+    const latestOtpCell = document.createElement('td')
+    renderLatestOtpCell(latestOtpCell, user.id)
+
     const reasonCell = document.createElement('td')
     reasonCell.textContent = user.blocked_reason || '-'
 
@@ -510,6 +524,10 @@ function renderUsers(users) {
     const keyActionsWrap = document.createElement('div')
     keyActionsWrap.className = 'key-actions-wrap'
 
+    const issueOtpBtn = document.createElement('button')
+    issueOtpBtn.className = 'user-action-btn'
+    issueOtpBtn.textContent = 'Lấy OTP'
+
     const revokeBtn = document.createElement('button')
     revokeBtn.className = 'user-action-btn revoke'
     revokeBtn.textContent = 'Thu hồi key'
@@ -518,11 +536,15 @@ function renderUsers(users) {
       actionBtn.classList.add('disabled')
       actionBtn.disabled = true
       actionBtn.textContent = 'Admin'
+      issueOtpBtn.classList.add('disabled')
+      issueOtpBtn.disabled = true
       revokeBtn.classList.add('disabled')
       revokeBtn.disabled = true
     } else {
       actionBtn.textContent = user.is_active ? 'Khóa' : 'Mở khóa'
       actionBtn.addEventListener('click', () => toggleUserBlock(user))
+
+      issueOtpBtn.addEventListener('click', () => generateOtpForUser(user, issueOtpBtn))
 
       revokeBtn.disabled = !user.course_access_active
       if (!user.course_access_active) {
@@ -531,6 +553,7 @@ function renderUsers(users) {
       revokeBtn.addEventListener('click', () => revokeUserCourseAccess(user, revokeBtn))
     }
     accountActionCell.appendChild(actionBtn)
+    keyActionsWrap.appendChild(issueOtpBtn)
     keyActionsWrap.appendChild(revokeBtn)
     keyActionCell.appendChild(keyActionsWrap)
 
@@ -538,6 +561,7 @@ function renderUsers(users) {
     row.appendChild(roleCell)
     row.appendChild(statusCell)
     row.appendChild(keyStatusCell)
+    row.appendChild(latestOtpCell)
     row.appendChild(reasonCell)
     row.appendChild(createdCell)
     row.appendChild(accountActionCell)
@@ -670,36 +694,6 @@ async function fetchStatsAndUsers() {
   }
 }
 
-function copyToClipboardAction() {
-  const otpDisplay = document.getElementById('otp-display')
-  const copyBtn = document.getElementById('copy-btn')
-  const otpText = otpDisplay.innerText
-
-  if (otpText === 'BY8-????-????-????') {
-    return
-  }
-
-  navigator.clipboard.writeText(otpText)
-
-  const originalColor = otpDisplay.style.color
-  otpDisplay.style.color = '#222222'
-  otpDisplay.style.transform = 'scale(0.98)'
-
-  setTimeout(() => {
-    otpDisplay.style.color = originalColor
-    otpDisplay.style.transform = ''
-  }, 200)
-
-  copyBtn.classList.add('success')
-  copyBtn.innerHTML =
-    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Đã sao chép!'
-
-  setTimeout(() => {
-    copyBtn.classList.remove('success')
-    copyBtn.innerHTML = ORIGINAL_COPY_HTML
-  }, 2000)
-}
-
 function bindEvents() {
   const logo = document.getElementById('header-logo')
   if (logo) {
@@ -708,20 +702,12 @@ function bindEvents() {
     }
   }
 
-  document.getElementById('header-logout-btn').addEventListener('click', handleLogout)
   document.getElementById('login-btn').addEventListener('click', handleLogin)
 
   document.getElementById('email-input').addEventListener('keypress', (event) => {
     if (event.key === 'Enter') {
       handleLogin()
     }
-  })
-
-  document.getElementById('otp-display').addEventListener('click', copyToClipboardAction)
-  document.getElementById('copy-btn').addEventListener('click', copyToClipboardAction)
-
-  document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab))
   })
 
   document.querySelectorAll('.users-filter-btn').forEach((btn) => {

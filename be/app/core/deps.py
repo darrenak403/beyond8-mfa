@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
@@ -8,14 +8,31 @@ from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
+def _extract_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None,
+    *,
+    detail: str,
+) -> str:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detail,
+        )
+    return credentials.credentials
+
+
+def get_current_user(
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
     )
+    token = _extract_bearer_token(credentials, detail=credentials_exception.detail)
     try:
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")
@@ -43,11 +60,15 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def get_current_course_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
+def get_current_course_user(
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or revoked course access token",
     )
+    token = _extract_bearer_token(credentials, detail=credentials_exception.detail)
     try:
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")

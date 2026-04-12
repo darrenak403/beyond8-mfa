@@ -12,8 +12,9 @@ class ExternalOTPVerifyRequest(BaseModel):
 
 class OTPGenerateResponse(BaseModel):
     otp: str
-    expires_in: int
+    expires_in: int | None = None
     version: int
+    target_email: str
 
 
 class OTPVerifyResponse(BaseModel):

@@ -139,9 +139,33 @@ def generate_otp_for_window(window_id: int) -> str:
     return _otp_raw_from_digest(digest)
 
 
+def generate_otp_for_user_window(user_id: str, otp_rotate_count: int, window_id: int | None = None) -> str:
+    """Deterministically generate OTP bound to a specific user and counter."""
+    message = f"otp:{user_id}:{otp_rotate_count}".encode()
+    digest = hmac.new(settings.jwt_secret_key.encode(), message, hashlib.sha256).hexdigest()
+    return _otp_raw_from_digest(digest)
+
+
 def verify_otp_for_window(otp_raw: str, window_id: int) -> bool:
     """Constant-time comparison to avoid timing attacks."""
     expected = generate_otp_for_window(window_id)
+    return hmac.compare_digest(
+        otp_raw.strip().upper(),
+        expected.strip().upper(),
+    )
+
+
+def verify_otp_for_user_window(
+    otp_raw: str,
+    user_id: str,
+    otp_rotate_count: int,
+    window_id: int | None = None,
+) -> bool:
+    expected = generate_otp_for_user_window(
+        user_id=user_id,
+        otp_rotate_count=otp_rotate_count,
+        window_id=window_id,
+    )
     return hmac.compare_digest(
         otp_raw.strip().upper(),
         expected.strip().upper(),

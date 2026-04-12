@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, get_current_course_user, get_current_user
@@ -14,13 +14,21 @@ router = APIRouter(prefix="/otp", tags=["OTP"])
 
 
 @router.get("/generate", response_model=ApiResponse[OTPGenerateResponse])
-def generate_otp(admin_user: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+def generate_otp(
+    target_email: str = Query(min_length=3, max_length=255),
+    _admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
     """
-    Generate current active OTP for admin to share.
-    Does NOT write anything to the database — purely stateless HMAC computation.
+    Generate OTP for one target user.
+    Each user has an independent OTP sequence.
     """
-    otp, expires_in, version = otp_service.generate_otp(db, issued_by_user_id=admin_user.id)
-    response_data = OTPGenerateResponse(otp=otp, expires_in=expires_in, version=version)
+    target_user = crud_user.get_by_email(db, target_email)
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng theo email")
+
+    otp, expires_in, version = otp_service.generate_otp(db, target_user_id=target_user.id)
+    response_data = OTPGenerateResponse(otp=otp, expires_in=expires_in, version=version, target_email=target_user.email)
     return success_response(data=response_data, message="Lấy OTP thành công")
 
 

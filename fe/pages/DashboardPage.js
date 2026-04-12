@@ -1,6 +1,6 @@
 export function renderDashboardPage() {
   return `
-    <div id="stats-tab" class="tab-panel">
+    <div id="stats-tab" class="tab-panel active">
       <div class="page-shell">
         <div class="page-content">
           <div class="stats-grid">
@@ -39,6 +39,7 @@ export function renderDashboardPage() {
                     <th>Vai trò</th>
                     <th>Trạng thái</th>
                     <th>Key OTP</th>
+                    <th>OTP vừa tạo</th>
                     <th>Lý do khóa</th>
                     <th>Ngày tạo</th>
                     <th>Thao tác tài khoản</th>

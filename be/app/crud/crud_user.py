@@ -33,6 +33,10 @@ class CRUDUser:
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_access_revoked_at TIMESTAMPTZ"))
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_course_access_revoked_at ON users (course_access_revoked_at)"))
 
+    def ensure_otp_columns(self, db: Session) -> None:
+        """Backward-compatible guard for per-user OTP counter rollout."""
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_rotate_count INTEGER NOT NULL DEFAULT 0"))
+
     @staticmethod
     def _as_utc(dt: datetime | None) -> datetime | None:
         if dt is None:

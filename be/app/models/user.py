@@ -28,6 +28,7 @@ class User(Base):
     course_access_period_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     course_access_purchase_count: Mapped[int] = mapped_column(default=0, nullable=False)
     course_access_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    otp_rotate_count: Mapped[int] = mapped_column(default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
