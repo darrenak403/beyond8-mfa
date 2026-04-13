@@ -43,14 +43,9 @@ def verify_otp(
     On success: records audit log row + immediately rotates OTP window.
     On failure: no DB writes.
     """
-    if payload.email.lower().strip() != current_user.email.lower().strip():
-        response_data = OTPVerifyResponse(
-            valid=False,
-            message="Email không khớp với người dùng đang đăng nhập",
-            next_otp_expires_in=None,
-            token=None,
-        )
-        return success_response(data=response_data, message="Email không hợp lệ")
+    # Trust authenticated session as source of truth.
+    # payload.email is kept for backward-compatible request shape.
+    _ = payload.email
 
     valid, message, next_expires = otp_service.verify_and_rotate(
         db,

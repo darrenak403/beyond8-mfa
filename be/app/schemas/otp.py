@@ -6,7 +6,7 @@ class OTPVerifyRequest(BaseModel):
 
 
 class ExternalOTPVerifyRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
     otp: str = Field(min_length=6, max_length=32)
 
 
