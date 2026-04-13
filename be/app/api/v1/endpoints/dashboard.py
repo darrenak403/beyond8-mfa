@@ -116,17 +116,6 @@ def unblock_user_dashboard(
     return success_response(data=_to_user_item_response(updated_user), message="Đã mở khóa người dùng")
 
 
-@router.patch("/users/{user_id}/course-access/revoke", response_model=ApiResponse[UserItemResponse])
-@router.patch("/getAllUser/{user_id}/course-access/revoke", response_model=ApiResponse[UserItemResponse])
-def revoke_course_access_dashboard(
-    user_id: str,
-    _admin_user: User = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    updated_user = auth_service.revoke_course_access(db, user_id=user_id)
-    return success_response(data=_to_user_item_response(updated_user), message="Đã thu hồi beyond8_course_access")
-
-
 @router.patch("/users/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
 @router.patch("/getAllUser/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
 def clear_verified_otp_key_dashboard(
