@@ -10,6 +10,9 @@ _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 class Settings(BaseSettings):
     app_name: str = "Beyond8 Auth Service"
     api_prefix: str = Field(default="/api", alias="API_PREFIX")
+    expose_api_docs: bool = Field(default=True, alias="EXPOSE_API_DOCS")
+    docs_basic_auth_user: str = Field(default="", alias="DOCS_BASIC_AUTH_USER")
+    docs_basic_auth_password: str = Field(default="", alias="DOCS_BASIC_AUTH_PASSWORD")
 
     database_url: str = Field(default="", alias="DATABASE_URL")
 
@@ -48,6 +51,18 @@ class Settings(BaseSettings):
             if candidate not in normalized:
                 normalized.append(candidate)
         return normalized
+
+    @property
+    def docs_basic_auth_enabled(self) -> bool:
+        """Khi set cả user + password: bật /api/docs nhưng chỉ vào được sau Basic Auth."""
+        u = self.docs_basic_auth_user.strip()
+        p = self.docs_basic_auth_password.strip()
+        return bool(u and p)
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        """Public docs (EXPOSE_API_DOCS) hoặc docs riêng có Basic Auth."""
+        return self.expose_api_docs or self.docs_basic_auth_enabled
 
 
 @lru_cache

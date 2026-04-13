@@ -9,11 +9,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.crud import crud_otp, crud_role, crud_user
+from app.middleware.docs_basic_auth import DocsBasicAuthMiddleware
 from app.db.session import SessionLocal
 from app.schemas.api_response import error_response
 
@@ -41,16 +42,16 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
-    redoc_url="/api/redoc",
+    docs_url="/api/docs" if settings.api_docs_enabled else None,
+    openapi_url="/api/openapi.json" if settings.api_docs_enabled else None,
+    redoc_url="/api/redoc" if settings.api_docs_enabled else None,
     lifespan=lifespan,
 )
 
 
 @app.get("/", include_in_schema=False)
-async def root_redirect_to_docs():
-    return RedirectResponse(url="/api/docs", status_code=307)
+async def root_health():
+    return {"service": settings.app_name, "status": "ok"}
 
 if not settings.database_url:
     raise RuntimeError("DATABASE_URL is required for Supabase Postgres connection")
@@ -62,6 +63,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if settings.docs_basic_auth_enabled:
+    app.add_middleware(
+        DocsBasicAuthMiddleware,
+        username=settings.docs_basic_auth_user.strip(),
+        password=settings.docs_basic_auth_password.strip(),
+    )
 
 
 @app.exception_handler(RequestValidationError)
