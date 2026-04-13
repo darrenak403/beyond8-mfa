@@ -5,7 +5,7 @@ from app.core.deps import get_current_admin
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
-from app.schemas.auth import BlockUserRequest, UserItemResponse, UserListResponse
+from app.schemas.auth import BlockUserRequest, UserDetailResponse, UserItemResponse, UserListResponse
 from app.schemas.stats import OTPStatsResponse, OTPVerificationHistoryResponse
 from app.services import auth_service, stats_service
 
@@ -47,7 +47,6 @@ def _build_user_list_response(
 
 
 @router.get("/users", response_model=ApiResponse[UserListResponse])
-@router.get("/getAllUser", response_model=ApiResponse[UserListResponse])
 def get_all_users_dashboard(
     _admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
@@ -62,6 +61,38 @@ def get_all_users_dashboard(
         search=search,
     )
     return success_response(data=response_data, message="Lấy danh sách người dùng thành công")
+
+
+@router.get("/users/by-email", response_model=ApiResponse[UserListResponse])
+def get_user_by_email_dashboard(
+    email: str = Query(min_length=1, max_length=255),
+    _admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    response_data = _build_user_list_response(
+        db,
+        offset=offset,
+        limit=limit,
+        search=email,
+    )
+    return success_response(data=response_data, message="Tìm kiếm người dùng theo email thành công")
+
+
+@router.get("/users/{user_id}", response_model=ApiResponse[UserDetailResponse])
+def get_user_by_id_dashboard(
+    user_id: str,
+    _admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    user = auth_service.get_user_by_id(db, user_id=user_id)
+    verification_history_items = stats_service.get_otp_verification_history(db, user_id=user_id)
+    response_data = UserDetailResponse(
+        user=_to_user_item_response(user),
+        otp_verification_history=verification_history_items[0] if verification_history_items else None,
+    )
+    return success_response(data=response_data, message="Lấy thông tin và lịch sử người dùng thành công")
 
 
 @router.get("/otp-verifications", response_model=ApiResponse[OTPStatsResponse])
@@ -89,7 +120,6 @@ def otp_verification_history_dashboard(
 
 
 @router.patch("/users/{user_id}/block", response_model=ApiResponse[UserItemResponse])
-@router.patch("/getAllUser/{user_id}/block", response_model=ApiResponse[UserItemResponse])
 def block_user_dashboard(
     user_id: str,
     payload: BlockUserRequest,
@@ -106,7 +136,6 @@ def block_user_dashboard(
 
 
 @router.patch("/users/{user_id}/unblock", response_model=ApiResponse[UserItemResponse])
-@router.patch("/getAllUser/{user_id}/unblock", response_model=ApiResponse[UserItemResponse])
 def unblock_user_dashboard(
     user_id: str,
     _admin_user: User = Depends(get_current_admin),
@@ -117,7 +146,6 @@ def unblock_user_dashboard(
 
 
 @router.patch("/users/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
-@router.patch("/getAllUser/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
 def clear_verified_otp_key_dashboard(
     user_id: str,
     _admin_user: User = Depends(get_current_admin),

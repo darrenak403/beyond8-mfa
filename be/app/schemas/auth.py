@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
+from app.schemas.stats import OTPVerificationHistoryItem
 
 
 class SignInRequest(BaseModel):
@@ -46,3 +47,8 @@ class UserListResponse(BaseModel):
     offset: int
     limit: int
     users: list[UserItemResponse]
+
+
+class UserDetailResponse(BaseModel):
+    user: UserItemResponse
+    otp_verification_history: OTPVerificationHistoryItem | None = None

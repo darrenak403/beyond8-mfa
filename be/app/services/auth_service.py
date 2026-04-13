@@ -2,8 +2,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.core.security import create_access_token
-from app.crud import crud_user
+from app.core.security import create_access_token, generate_otp_for_user_window
+from app.crud import crud_otp, crud_user
 from app.models.user import User
 
 
@@ -48,6 +48,12 @@ class AuthService:
         search: str | None = None,
     ) -> tuple[list[User], int]:
         return crud_user.get_all(db, offset=offset, limit=limit, search=search)
+
+    def get_user_by_id(self, db: Session, *, user_id: str) -> User:
+        user = crud_user.get_by_id(db, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+        return user
 
     def block_user(
         self,
@@ -114,6 +120,21 @@ class AuthService:
         updated = crud_user.clear_verified_otp_key(db, user_id=user.id)
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
+        # Rotate OTP immediately so the previous key is invalid and a fresh
+        # key is available in last_generated_otp right after clear.
+        try:
+            new_rotate_count = crud_otp.increment_user_rotate_count(db, user_id=user.id)
+            new_otp = generate_otp_for_user_window(
+                user_id=user.id,
+                otp_rotate_count=new_rotate_count,
+            )
+            crud_otp.save_last_generated_otp(db, user_id=user.id, otp_value=new_otp)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy người dùng",
+            ) from exc
         return updated
 
 
