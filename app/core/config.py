@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     run_startup_bootstrap: bool = Field(default=True, alias="RUN_STARTUP_BOOTSTRAP")
 
     key_prefix: str = Field(default="BY8", alias="KEY_PREFIX")
+    redis_enabled: bool = Field(default=False, alias="REDIS_ENABLED")
+    upstash_redis_rest_url: str = Field(default="", alias="UPSTASH_REDIS_REST_URL")
+    upstash_redis_rest_token: str = Field(default="", alias="UPSTASH_REDIS_REST_TOKEN")
     cors_origins: str = Field(
         default=(
             "http://127.0.0.1:3000,"

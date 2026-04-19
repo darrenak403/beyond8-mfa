@@ -1,11 +1,14 @@
 import hashlib
+import logging
 import re
 import unicodedata
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.crud import crud_question_source
+from app.services.cache_service import cache_service
 
 _SUBJECT_PATTERN = re.compile(r"^[A-Z]{3,4}[0-9]{3}[A-Z]?$")
 _TERM_PATTERN = re.compile(r"^(SP|SU|FA)$")
@@ -16,6 +19,11 @@ _OPTION_LINE = re.compile(r"^\s*([A-D])[\).:\-]\s*(.+)$", flags=re.IGNORECASE)
 _ANSWER_LINE = re.compile(r"^\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE)
 _INLINE_ANSWER = re.compile(r"\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*([A-D](?:\s*[,;/]\s*[A-D])*)\s*$", flags=re.IGNORECASE)
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+_CACHE_SUBJECTS_TTL_SECONDS = 600
+_CACHE_SUBJECT_READ_TTL_SECONDS = 300
+_CACHE_DECK_LIST_TTL_SECONDS = 120
+_CACHE_DECK_QUESTIONS_TTL_SECONDS = 600
+logger = logging.getLogger(__name__)
 
 
 def _error(status_code: int, code: str, message: str, details: dict | None = None) -> HTTPException:
@@ -43,6 +51,52 @@ def _subject_code_from_slug(subject_slug: str) -> str:
     if subject_slug.lower() == "prn232":
         return "PRN232"
     return subject_slug.upper()
+
+
+def _cache_global_subjects_version() -> int:
+    return cache_service.get_int("qs:subjects:ver", default=1)
+
+
+def _cache_subject_version(slug: str) -> int:
+    return cache_service.get_int(f"qs:subject:{slug}:ver", default=1)
+
+
+def _cache_user_decks_version(slug: str, user_id: str) -> int:
+    return cache_service.get_int(f"qs:subject:{slug}:user:{user_id}:decks:ver", default=1)
+
+
+def _invalidate_subject_catalog() -> None:
+    cache_service.bump_version("qs:subjects:ver")
+
+
+def _invalidate_subject_reads(slug: str) -> None:
+    cache_service.bump_version(f"qs:subject:{slug}:ver")
+
+
+def _invalidate_user_decks(slug: str, user_id: str) -> None:
+    cache_service.bump_version(f"qs:subject:{slug}:user:{user_id}:decks:ver")
+
+
+def _schedule_after_commit(db: Session, callback) -> None:
+    callbacks = db.info.setdefault("cache_after_commit_callbacks", [])
+    callbacks.append(callback)
+    if db.info.get("cache_after_commit_registered"):
+        return
+    db.info["cache_after_commit_registered"] = True
+
+    @event.listens_for(db, "after_commit")
+    def _after_commit(session: Session) -> None:  # pragma: no cover - integration behavior
+        pending = session.info.pop("cache_after_commit_callbacks", [])
+        for item in pending:
+            try:
+                item()
+            except Exception as exc:
+                # Cache invalidation failure must never break request flow.
+                logger.warning("Cache invalidation callback failed: %s", exc, exc_info=True)
+
+    @event.listens_for(db, "after_rollback")
+    def _after_rollback(session: Session) -> None:  # pragma: no cover - integration behavior
+        session.info.pop("cache_after_commit_callbacks", None)
 
 
 def detect_subject_and_exam(file_name: str) -> dict:
@@ -199,6 +253,10 @@ def ingest_markdown_file(
         question_count=len(questions),
     )
     crud_question_source.replace_source_questions(db, source_id=source.id, payload=questions)
+    _schedule_after_commit(
+        db,
+        lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(metadata["subjectSlug"])),
+    )
     return {
         "sourceId": source.id,
         "subjectSlug": metadata["subjectSlug"],
@@ -213,15 +271,28 @@ def ingest_markdown_file(
 
 
 def list_subjects(db: Session) -> list[dict]:
-    return [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in crud_question_source.list_subjects(db)]
+    version = _cache_global_subjects_version()
+    cache_key = f"qs:subjects:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
+    payload = [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in crud_question_source.list_subjects(db)]
+    cache_service.set_json(cache_key, payload, _CACHE_SUBJECTS_TTL_SECONDS)
+    return payload
 
 
 def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
+    normalized_slug = slug.lower()
+    version = _cache_subject_version(normalized_slug)
+    cache_key = f"qs:admin:subject:{normalized_slug}:sources:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     sources = crud_question_source.list_sources_by_subject(db, subject.id)
-    return [
+    payload = [
         {
             "sourceId": source.id,
             "examCode": source.exam_code,
@@ -232,15 +303,25 @@ def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
         }
         for source in sources
     ]
+    cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+    return payload
 
 
 def get_source_state(db: Session, slug: str) -> dict:
+    normalized_slug = slug.lower()
+    version = _cache_subject_version(normalized_slug)
+    cache_key = f"qs:subject:{normalized_slug}:source-state:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     sources = crud_question_source.list_sources_by_subject(db, subject.id)
     if not sources:
-        return {"bankQuestions": [], "deckQuestions": [], "files": [], "hocTheoDeLayout": "markdownFiles"}
+        payload = {"bankQuestions": [], "deckQuestions": [], "files": [], "hocTheoDeLayout": "markdownFiles"}
+        cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+        return payload
     bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
     deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
 
@@ -257,7 +338,7 @@ def get_source_state(db: Session, slug: str) -> dict:
             for idx, item in enumerate(questions, start=1)
         )
 
-    return {
+    payload = {
         "bankQuestions": bank_formatted,
         "deckQuestions": deck_questions,
         "files": [
@@ -271,18 +352,29 @@ def get_source_state(db: Session, slug: str) -> dict:
         ],
         "hocTheoDeLayout": "markdownFiles",
     }
+    cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+    return payload
 
 
 def get_subject_bank(db: Session, slug: str) -> list[dict]:
+    normalized_slug = slug.lower()
+    version = _cache_subject_version(normalized_slug)
+    cache_key = f"qs:subject:{normalized_slug}:bank:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     sources = crud_question_source.list_sources_by_subject(db, subject.id)
     if not sources:
+        cache_service.set_json(cache_key, [], _CACHE_SUBJECT_READ_TTL_SECONDS)
         return []
     source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
     questions = crud_question_source.list_source_questions(db, source.id)
-    return [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    payload = [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+    return payload
 
 
 def _build_deck_stats(
@@ -308,6 +400,17 @@ def _build_deck_stats(
 
 
 def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> list[dict]:
+    normalized_slug = slug.lower()
+    if user_id:
+        subject_version = _cache_subject_version(normalized_slug)
+        user_version = _cache_user_decks_version(normalized_slug, user_id)
+        cache_key = f"qs:subject:{normalized_slug}:user:{user_id}:decks:sv{subject_version}:uv{user_version}"
+    else:
+        version = _cache_subject_version(normalized_slug)
+        cache_key = f"qs:subject:{normalized_slug}:decks:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
@@ -336,10 +439,17 @@ def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> 
                 "uploadedAt": source.uploaded_at.isoformat() if source.uploaded_at else None,
             }
         )
+    cache_service.set_json(cache_key, result, _CACHE_DECK_LIST_TTL_SECONDS)
     return result
 
 
 def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
+    normalized_slug = slug.lower()
+    version = _cache_subject_version(normalized_slug)
+    cache_key = f"qs:subject:{normalized_slug}:deck:{deck_id}:questions:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
@@ -347,7 +457,9 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
     if source is None:
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
     questions = crud_question_source.list_source_questions(db, source.id)
-    return [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    payload = [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    cache_service.set_json(cache_key, payload, _CACHE_DECK_QUESTIONS_TTL_SECONDS)
+    return payload
 
 
 def update_deck_stats(
@@ -393,6 +505,8 @@ def update_deck_stats(
         completed_count=completed,
         completion_rate_percent=completion_rate_percent,
     )
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: _invalidate_user_decks(subject_slug, user_id))
 
     return {
         "deckId": source.id,
@@ -449,6 +563,8 @@ def update_deck_progress(
         completed_count=completed_attempts,
         completion_rate_percent=completion_rate_percent,
     )
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: _invalidate_user_decks(subject_slug, user_id))
     return {
         "deckId": source.id,
         "subjectSlug": subject.slug,
@@ -538,6 +654,8 @@ def update_source_questions(db: Session, slug: str, source_id: str, questions: l
     crud_question_source.update_source_question_stats(
         db, source=source, question_count=len(normalized), warnings=warnings
     )
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
     return {
         "sourceId": source.id,
         "subjectSlug": subject.slug,
@@ -601,6 +719,8 @@ def update_source_from_markdown(
 
     crud_question_source.replace_source_questions(db, source_id=source.id, payload=parsed_questions)
     db.flush()
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
 
     return {
         "sourceId": source.id,
@@ -626,6 +746,8 @@ def delete_source(db: Session, *, slug: str, source_id: str) -> dict:
 
     source_file_name = source.file_name
     crud_question_source.hard_delete_source(db, source_id=source.id)
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
     return {
         "sourceId": source_id,
         "subjectSlug": subject.slug,

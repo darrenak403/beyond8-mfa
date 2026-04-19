@@ -1,4 +1,5 @@
 from app.services.auth_service import auth_service
+from app.services.cache_service import cache_service
 from app.services.otp_service import otp_service
 from app.services.question_source_service import (
     check_deck_answer,
@@ -22,6 +23,7 @@ from app.services.stats_service import stats_service
 
 __all__ = [
     "auth_service",
+    "cache_service",
     "otp_service",
     "stats_service",
     "ingest_markdown_file",
