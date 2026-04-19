@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from fastapi import Query
 
 from app.core.deps import get_current_admin
 from app.db.session import get_db

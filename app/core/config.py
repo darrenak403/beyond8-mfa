@@ -1,11 +1,12 @@
+import os
 from functools import lru_cache
 from typing import List
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
 
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+
 
 class Settings(BaseSettings):
     app_name: str = "Beyond8 Auth Service"

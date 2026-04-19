@@ -1,17 +1,28 @@
 ---
 name: python
-description: Python backend implementation — FastAPI/Starlette, Pydantic v2, SQLAlchemy 2 + Alembic, pytest and httpx, async I/O, security, performance, packaging (uvicorn, Docker). Activate for Python APIs, services, migrations, tests, or code review.
+description: Python backend implementation — FastAPI/Starlette, Pydantic v2, SQLAlchemy 2 + Alembic, pytest and httpx, async I/O, security, performance, packaging (uvicorn, Docker). Enforces layered app/ constraints (endpoints→services→crud), stable public API paths and JSON fields unless explicit breaking change, Alembic for schema. Activate for Python APIs, services, migrations, tests, refactors, or code review.
 ---
 
 # Python — Service & API Implementation
 
 Load only the reference needed for the current task.
 
+## Mandatory rules (always honor)
+
+These apply to **this** FastAPI service layout (`app/` with `api`, `services`, `crud`, `schemas`, `models`, `core`, `db`). Full matrices and rationale: [`references/architecture.md`](references/architecture.md). Public HTTP rules: [`references/api-design.md`](references/api-design.md) (contract stability).
+
+1. **Dependency direction** — `endpoints` → `services` → `crud` → `models`. Never import `endpoints` from `services` or `crud`. Never put heavy ORM/query loops in routers.
+2. **Thin HTTP layer** — Routers validate via Pydantic, call one service (or a single well-scoped crud helper), return schemas. No business rules in path operations.
+3. **Stable public API** — Do not rename route paths, HTTP methods, query parameter names, or **documented** JSON response field names unless the task explicitly requires a breaking change **and** a version or migration plan for clients.
+4. **Persistence** — Schema changes go through **Alembic** migrations; do not hand-edit production DB without a migration. ORM models stay in `models/`; API shapes stay in `schemas/`.
+5. **Auth cross-cutting** — Reuse `core.deps` / shared dependencies for JWT and admin checks; do not duplicate verification logic across endpoints.
+6. **Refactors** — Readability-only cleanups must **not** change behavior, status codes, or externally visible payloads unless explicitly requested.
+
 ## Reference Map
 
 | Task | When to load | File |
 |------|----------------|------|
-| Where does code go? Layers and imports | New feature or refactor | [`references/architecture.md`](references/architecture.md) |
+| **Constraints & layout** — MUST/MUST NOT layers, imports, migrations, where code goes | Any change touching `app/` | [`references/architecture.md`](references/architecture.md) |
 | Idioms, typing, async, DI (`Depends`) | Writing or reviewing Python | [`references/python-patterns.md`](references/python-patterns.md) |
 | REST routes, status codes, response shapes | API design or new endpoint | [`references/api-design.md`](references/api-design.md) |
 | pytest, fixtures, HTTP client tests | Writing or fixing tests | [`references/testing.md`](references/testing.md) |
@@ -48,7 +59,7 @@ TASK?
 │  └─ uvicorn, Docker, Alembic   → references/runtime-packaging.md
 │
 └─ Code review
-   ├─ Layer violations?          → references/architecture.md
+   ├─ MUST / MUST NOT (layers, API freeze)? → references/architecture.md + api-design.md
    ├─ Types / async smells?      → references/python-patterns.md
    └─ OWASP-style issues?        → references/security.md
 ```
@@ -57,6 +68,7 @@ TASK?
 
 ## Coverage
 
+- **Constraints** — MUST-layer rules, import bans, public API stability, migration discipline
 - **Layout** — routers vs services vs CRUD vs schemas vs `core` settings
 - **Python 3.11+** — type hints, `Protocol`, structural typing, `match`, pathlib
 - **FastAPI** — dependencies, lifespan, exception handlers, OpenAPI discipline

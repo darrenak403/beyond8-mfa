@@ -1,12 +1,10 @@
 """CRUD helpers for per-user stateless OTP."""
 
-import math
 from datetime import datetime, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import desc, select, text
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.models.otp_verification import OTPVerification
 from app.models.user import User
 
@@ -14,21 +12,6 @@ from app.models.user import User
 class CRUDOTP:
     def ensure_otp_verification_columns(self, db: Session) -> None:
         db.execute(text("ALTER TABLE otp_verifications ADD COLUMN IF NOT EXISTS otp_rotate_count INTEGER"))
-
-    # ------------------------------------------------------------------
-    # Window ID helpers
-    # ------------------------------------------------------------------
-
-    def current_window_id(self) -> int:
-        """Compute active HMAC window id from current time."""
-        now_unix = datetime.now(timezone.utc).timestamp()
-        return math.floor(now_unix / settings.otp_ttl_seconds)
-
-    def seconds_until_window_flip(self) -> int:
-        """Remaining seconds in the current natural 60-second window."""
-        now_unix = datetime.now(timezone.utc).timestamp()
-        elapsed = now_unix % settings.otp_ttl_seconds
-        return max(1, math.ceil(settings.otp_ttl_seconds - elapsed))
 
     # ------------------------------------------------------------------
     # Per-user rotation helpers
@@ -108,8 +91,6 @@ class CRUDOTP:
     # ------------------------------------------------------------------
 
     def get_latest_user_verification(self, db: Session, user_id: str) -> OTPVerification | None:
-        from sqlalchemy import desc
-
         stmt = (
             select(OTPVerification)
             .where(OTPVerification.user_id == user_id)

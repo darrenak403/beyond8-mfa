@@ -1,6 +1,8 @@
 # Security — Python Web Services
 
-Secrets, authn/z, input handling, data access, and dependency hygiene. Not routing structure (see `api-design.md`).
+Secrets, authn/z, input handling, data access, and dependency hygiene. Routing and **layer MUST/MUST NOT** live in [`architecture.md`](architecture.md) and `api-design.md`.
+
+- **MUST** centralize JWT and role checks in shared dependencies (e.g. `core.deps`); **MUST NOT** copy-paste token parsing across endpoints.
 
 ## Secrets & config
 

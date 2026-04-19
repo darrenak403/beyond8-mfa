@@ -1,6 +1,16 @@
 # API Design — REST + FastAPI
 
-URLs, methods, status codes, bodies, and handler shape. Security policy details live in `security.md`.
+URLs, methods, status codes, bodies, and handler shape. Security policy details live in `security.md`. **Layer and import MUST/MUST NOT:** see [`architecture.md`](architecture.md).
+
+## Contract stability (MUST for existing APIs)
+
+When editing **published** endpoints (anything external clients or the FE already call):
+
+- **MUST NOT** change `path`, `method`, or **names** of query parameters / JSON body keys / top-level response envelope fields **unless** the task explicitly authorizes a breaking change and mentions versioning or client migration.
+- **MAY** add new **optional** query or body fields and new response fields that old clients can ignore.
+- **MAY** tighten validation (stricter Pydantic rules) only if it does not reject payloads that were previously accepted **without** product agreement — otherwise treat as breaking.
+
+New endpoints under a new prefix or version (`/api/v2/...`) follow the same conventions once published.
 
 ## URL conventions
 
