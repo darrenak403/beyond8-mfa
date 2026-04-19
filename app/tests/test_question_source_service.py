@@ -1,0 +1,105 @@
+from fastapi import HTTPException
+from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+from app.services import question_source_service
+from app.services.question_source_service import (
+    detect_subject_and_exam,
+    detect_subject_and_exam_with_fallback,
+    get_subject_decks,
+    ingest_markdown_file,
+    parse_questions,
+)
+
+
+def test_detect_subject_and_exam_success() -> None:
+    payload = detect_subject_and_exam("PRN232 - SP 2025 - FE.md")
+    assert payload["subjectSlug"] == "prn232"
+    assert payload["examCode"] == "SP-2025-FE"
+
+
+def test_detect_subject_and_exam_invalid_filename() -> None:
+    try:
+        detect_subject_and_exam("abc.md")
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["error"]["code"] == "UNRECOGNIZED_FILENAME_PATTERN"
+    else:
+        raise AssertionError("Expected HTTPException for invalid filename")
+
+
+def test_parse_questions_extracts_basic_fields() -> None:
+    markdown = """
+    Câu 1: Python là gì?
+    A. Ngôn ngữ lập trình
+    B. Món ăn
+    Đáp án: A
+    """
+    questions, warnings = parse_questions(markdown)
+    assert len(questions) == 1
+    assert questions[0]["stem"] == "Python là gì?"
+    assert questions[0]["options"][0]["label"] == "A"
+    assert warnings == []
+
+
+def test_parse_questions_extracts_inline_answer_from_stem() -> None:
+    markdown = """
+    Câu 1: Theo Mác-Lênin lực lượng cơ bản của xã hội là gì? Đáp án: A
+    A. Quần chúng nhân dân
+    B. Giai cấp nông dân
+    C. Lãnh tụ
+    D. Vĩ nhân
+    """
+    questions, _ = parse_questions(markdown)
+    assert len(questions) == 1
+    assert questions[0]["stem"].endswith("là gì?")
+    assert questions[0]["answer_text"] == "A"
+
+
+def test_ingest_markdown_file_persists_via_crud_path(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1")
+    fake_source = SimpleNamespace(id="source-1")
+    fake_crud = Mock()
+    fake_crud.get_or_create_subject.return_value = fake_subject
+    fake_crud.get_source_by_checksum.return_value = None
+    fake_crud.create_source.return_value = fake_source
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    content = b"Cau 1: What is Python?\nA. Language\nB. Animal\nDap an: A\n"
+    upload = SimpleNamespace(filename="PRN232 - SP 2025 - FE.md", file=BytesIO(content))
+
+    result = ingest_markdown_file(db=Mock(), file=upload, uploader_id="admin-1")
+
+    assert result["sourceId"] == "source-1"
+    assert result["deduplicated"] is False
+    fake_crud.create_source.assert_called_once()
+    fake_crud.replace_source_questions.assert_called_once()
+
+
+def test_detect_aggregated_file_requires_subject_slug() -> None:
+    try:
+        detect_subject_and_exam_with_fallback("cau-hoi-tong-hop.md", None)
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["error"]["code"] == "SUBJECT_SLUG_REQUIRED_FOR_AGGREGATED_FILE"
+    else:
+        raise AssertionError("Expected HTTPException for missing subjectSlug")
+
+
+def test_get_subject_decks_excludes_aggregated_bank(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1")
+    aggregated = SimpleNamespace(
+        id="src-bank", exam_code="AGG-BANK", file_name="cau-hoi-tong-hop.md", question_count=200, uploaded_at=None
+    )
+    deck = SimpleNamespace(
+        id="src-deck", exam_code="FA-2024-FE", file_name="PMG201c - FA 2024 - FE.md", question_count=50, uploaded_at=None
+    )
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.list_sources_by_subject.return_value = [aggregated, deck]
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    decks = get_subject_decks(Mock(), "pmg201c")
+    assert len(decks) == 1
+    assert decks[0]["deckId"] == "src-deck"

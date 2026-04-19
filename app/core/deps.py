@@ -36,7 +36,10 @@ def get_current_user(
     try:
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")
-        if user_id is None:
+        role: str | None = payload.get("role")
+        # Keep auth/session token separate from course-access token.
+        # course_viewer token must only be accepted by get_current_course_user.
+        if user_id is None or role == "course_viewer":
             raise credentials_exception
     except JWTError as exc:
         raise credentials_exception from exc

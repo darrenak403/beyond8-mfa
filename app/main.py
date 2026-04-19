@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.crud import crud_otp, crud_role, crud_user
+from app.crud import crud_otp, crud_question_source, crud_role, crud_user
 from app.middleware.docs_basic_auth import DocsBasicAuthMiddleware
 from app.db.session import SessionLocal
 from app.schemas.api_response import error_response
@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI):
             crud_user.ensure_course_access_columns(db)
             crud_user.ensure_otp_columns(db)
             crud_otp.ensure_otp_verification_columns(db)
+            crud_question_source.ensure_tables(db)
             crud_role.ensure_seed_roles(db)
             crud_user.get_or_create(db, settings.seed_admin_email.lower(), "admin")
             db.commit()
@@ -84,11 +85,16 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_: Request, exc: HTTPException):
-    message = exc.detail if isinstance(exc.detail, str) else "Yêu cầu thất bại"
-    payload = error_response(message=message, code=exc.status_code, data=None)
-    response = JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        response = JSONResponse(status_code=exc.status_code, content=exc.detail)
+    else:
+        message = exc.detail if isinstance(exc.detail, str) else "Yêu cầu thất bại"
+        payload = error_response(message=message, code=exc.status_code, data=None)
+        response = JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
-    if exc.status_code in (401, 403):
+    auth_clear_details = {"Could not validate credentials", "Tài khoản đã bị khóa"}
+    should_clear_auth_cookie = exc.status_code == 401 or (exc.status_code == 403 and exc.detail in auth_clear_details)
+    if should_clear_auth_cookie:
         response.delete_cookie("auth_token", path="/")
         response.delete_cookie("refresh_token", path="/")
 
