@@ -16,7 +16,7 @@ Hệ thống được xây dựng bằng thiết kế **Stateless OTP với HMAC
 
 ## 2. Các tham số Môi trường (.env)
 
-Tạo file `.env` ở trong thư mục `be/`:
+Tạo file `.env` ở thư mục gốc của repo (cùng cấp với `app/`):
 
 ```env
 APP_NAME=Beyond8 Auth Service
@@ -40,8 +40,7 @@ CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000,h
 Hệ thống nên được đưa vào venv để khởi chạy:
 
 ```bash
-# Di chuyển vào thư mục backend
-cd be/
+# Ở thư mục gốc của repo backend
 
 # Cài đặt dependencies
 .venv\Scripts\pip.exe install -r requirements.txt
