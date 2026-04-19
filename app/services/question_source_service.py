@@ -216,6 +216,24 @@ def list_subjects(db: Session) -> list[dict]:
     return [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in crud_question_source.list_subjects(db)]
 
 
+def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    sources = crud_question_source.list_sources_by_subject(db, subject.id)
+    return [
+        {
+            "sourceId": source.id,
+            "examCode": source.exam_code,
+            "fileName": source.file_name,
+            "questionCount": int(source.question_count or 0),
+            "isAggregatedBank": _is_aggregated_bank_filename(source.file_name),
+            "uploadedAt": source.uploaded_at.isoformat() if source.uploaded_at else None,
+        }
+        for source in sources
+    ]
+
+
 def get_source_state(db: Session, slug: str) -> dict:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
@@ -267,21 +285,54 @@ def get_subject_bank(db: Session, slug: str) -> list[dict]:
     return [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
 
 
-def get_subject_decks(db: Session, slug: str) -> list[dict]:
+def _build_deck_stats(
+    total_questions: int,
+    current_question_ordinal: int,
+    completed_attempts: int,
+) -> dict:
+    safe_total = max(total_questions, 0)
+    safe_current = max(current_question_ordinal, 0)
+    safe_completed_attempts = max(completed_attempts, 0)
+    if safe_total > 0:
+        safe_current = min(safe_current, safe_total)
+        computed_rate = int(round((safe_current / safe_total) * 100))
+    else:
+        safe_current = 0
+        computed_rate = 0
+    return {
+        "total": safe_total,
+        "inProgress": safe_current,
+        "completed": safe_completed_attempts,
+        "completionRatePercent": max(0, min(computed_rate, 100)),
+    }
+
+
+def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> list[dict]:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     sources = crud_question_source.list_sources_by_subject(db, subject.id)
+    deck_sources = [source for source in sources if not _is_aggregated_bank_filename(source.file_name)]
+    stats_by_source_id: dict[str, dict] = {}
+    if user_id:
+        stats_by_source_id = crud_question_source.list_user_stats_by_source_ids(
+            db, user_id=user_id, source_ids=[item.id for item in deck_sources]
+        )
     result: list[dict] = []
-    for source in sources:
-        if _is_aggregated_bank_filename(source.file_name):
-            continue
+    for source in deck_sources:
+        total_questions = int(source.question_count or 0)
+        user_stats = stats_by_source_id.get(source.id, {})
+        current_question_ordinal = int(
+            user_stats.get("current_question_ordinal", user_stats.get("in_progress_count", 0))
+        )
+        completed_attempts = int(user_stats.get("completed_attempts", user_stats.get("completed_count", 0)))
         result.append(
             {
                 "deckId": source.id,
                 "examCode": source.exam_code,
                 "fileName": source.file_name,
-                "questionCount": source.question_count,
+                "questionCount": total_questions,
+                "stats": _build_deck_stats(total_questions, current_question_ordinal, completed_attempts),
                 "uploadedAt": source.uploaded_at.isoformat() if source.uploaded_at else None,
             }
         )
@@ -297,6 +348,151 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
     questions = crud_question_source.list_source_questions(db, source.id)
     return [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+
+
+def update_deck_stats(
+    db: Session,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+    in_progress: int,
+    completed: int,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    total_questions = int(source.question_count or 0)
+    if in_progress + completed > total_questions:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_DECK_STATS",
+            "inProgress + completed cannot exceed total questions of this deck.",
+            details={
+                "total": total_questions,
+                "inProgress": in_progress,
+                "completed": completed,
+            },
+        )
+
+    completion_rate_percent = 0
+    if total_questions > 0:
+        completion_rate_percent = int(round((in_progress / total_questions) * 100))
+
+    crud_question_source.upsert_source_user_stats(
+        db,
+        source_id=source.id,
+        user_id=user_id,
+        current_question_ordinal=in_progress,
+        completed_attempts=completed,
+        in_progress_count=in_progress,
+        completed_count=completed,
+        completion_rate_percent=completion_rate_percent,
+    )
+
+    return {
+        "deckId": source.id,
+        "subjectSlug": subject.slug,
+        "stats": _build_deck_stats(total_questions, in_progress, completed),
+    }
+
+
+def update_deck_progress(
+    db: Session,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+    current_question: int,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    total_questions = int(source.question_count or 0)
+    if current_question > total_questions:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_PROGRESS",
+            "currentQuestion cannot exceed total questions of this deck.",
+            details={"total": total_questions, "currentQuestion": current_question},
+        )
+
+    current_stats = crud_question_source.list_user_stats_by_source_ids(
+        db, user_id=user_id, source_ids=[source.id]
+    ).get(source.id, {})
+    previous_current = int(
+        current_stats.get("current_question_ordinal", current_stats.get("in_progress_count", 0))
+    )
+    completed_attempts = int(current_stats.get("completed_attempts", current_stats.get("completed_count", 0)))
+    if total_questions > 0 and current_question >= total_questions and previous_current < total_questions:
+        completed_attempts += 1
+
+    completion_rate_percent = 0
+    if total_questions > 0:
+        completion_rate_percent = int(round((current_question / total_questions) * 100))
+
+    crud_question_source.upsert_source_user_stats(
+        db,
+        source_id=source.id,
+        user_id=user_id,
+        current_question_ordinal=current_question,
+        completed_attempts=completed_attempts,
+        in_progress_count=current_question,
+        completed_count=completed_attempts,
+        completion_rate_percent=completion_rate_percent,
+    )
+    return {
+        "deckId": source.id,
+        "subjectSlug": subject.slug,
+        "stats": _build_deck_stats(total_questions, current_question, completed_attempts),
+    }
+
+
+def check_deck_answer(
+    db: Session,
+    *,
+    slug: str,
+    deck_id: str,
+    question_id: int,
+    selected_answer: str,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    question = crud_question_source.get_question_by_ordinal(db, source_id=source.id, ordinal=question_id)
+    if question is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "QUESTION_NOT_FOUND", "Question not found for deck.")
+
+    selected = selected_answer.strip().upper()
+    if not selected:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_SELECTED_ANSWER",
+            "selectedAnswer must not be empty.",
+        )
+
+    correct_answers = [str(item).strip().upper() for item in (question.answers_json or []) if str(item).strip()]
+    if not correct_answers and question.answer_text:
+        correct_answers = [part.strip().upper() for part in re.split(r"[;,/]+", question.answer_text) if part.strip()]
+    is_correct = selected in correct_answers
+    return {
+        "questionId": question_id,
+        "selectedAnswer": selected,
+        "correctAnswers": correct_answers,
+        "isCorrect": is_correct,
+    }
 
 
 def update_source_questions(db: Session, slug: str, source_id: str, questions: list[dict]) -> dict:
@@ -385,6 +581,16 @@ def update_source_from_markdown(
     markdown_text = raw_bytes.decode("utf-8", errors="ignore")
     parsed_questions, parse_warnings = parse_questions(markdown_text)
     checksum = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+    existing = crud_question_source.get_source_by_checksum(
+        db, subject_id=subject.id, exam_code=metadata["examCode"], checksum_sha256=checksum
+    )
+    if existing is not None and existing.id != source.id:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "DUPLICATE_SOURCE",
+            "A source with the same exam code and checksum already exists.",
+            details={"existingSourceId": existing.id},
+        )
 
     source.exam_code = metadata["examCode"]
     source.file_name = file.filename

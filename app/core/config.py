@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     key_prefix: str = Field(default="BY8", alias="KEY_PREFIX")
     cors_origins: str = Field(
         default=(
+            "http://127.0.0.1:3000,"
+            "http://localhost:3000,"
+            "http://100.69.71.17:3000,"
             "http://127.0.0.1:5500,"
             "http://localhost:5500,"
             "https://source.beyond8.io.vn,"

@@ -5,11 +5,14 @@ from unittest.mock import Mock
 
 from app.services import question_source_service
 from app.services.question_source_service import (
+    check_deck_answer,
     detect_subject_and_exam,
     detect_subject_and_exam_with_fallback,
     get_subject_decks,
     ingest_markdown_file,
     parse_questions,
+    update_deck_progress,
+    update_deck_stats,
 )
 
 
@@ -103,3 +106,85 @@ def test_get_subject_decks_excludes_aggregated_bank(monkeypatch) -> None:
     decks = get_subject_decks(Mock(), "pmg201c")
     assert len(decks) == 1
     assert decks[0]["deckId"] == "src-deck"
+    assert decks[0]["stats"]["total"] == 50
+    assert decks[0]["stats"]["inProgress"] == 0
+    assert decks[0]["stats"]["completed"] == 0
+
+
+def test_update_deck_stats_validates_total(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=50)
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    result = update_deck_stats(
+        Mock(),
+        slug="pmg201c",
+        deck_id="src-deck",
+        user_id="user-1",
+        in_progress=2,
+        completed=3,
+    )
+    assert result["stats"]["total"] == 50
+    assert result["stats"]["completionRatePercent"] == 4  # inProgress/total = 2/50 = 4%
+
+    try:
+        update_deck_stats(
+            Mock(),
+            slug="pmg201c",
+            deck_id="src-deck",
+            user_id="user-1",
+            in_progress=40,
+            completed=20,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["error"]["code"] == "INVALID_DECK_STATS"
+    else:
+        raise AssertionError("Expected HTTPException when deck stats exceed total questions")
+
+
+def test_update_deck_progress_increments_completed_attempts(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=50)
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    fake_crud.list_user_stats_by_source_ids.return_value = {
+        "src-deck": {"current_question_ordinal": 49, "completed_attempts": 0}
+    }
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    result = update_deck_progress(
+        Mock(),
+        slug="pmg201c",
+        deck_id="src-deck",
+        user_id="user-1",
+        current_question=50,
+    )
+    assert result["stats"]["completionRatePercent"] == 100
+    assert result["stats"]["completed"] == 1
+    fake_crud.upsert_source_user_stats.assert_called_once()
+
+
+def test_check_deck_answer_returns_correctness(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=50)
+    fake_question = SimpleNamespace(answers_json=["B"], answer_text="B")
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    fake_crud.get_question_by_ordinal.return_value = fake_question
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    correct = check_deck_answer(
+        Mock(),
+        slug="pmg201c",
+        deck_id="src-deck",
+        question_id=3,
+        selected_answer="b",
+    )
+    assert correct["isCorrect"] is True
+    assert correct["correctAnswers"] == ["B"]

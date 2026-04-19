@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -65,6 +67,25 @@ class CRUDQuestionSource:
         )
         db.execute(
             text(
+                """
+                CREATE TABLE IF NOT EXISTS question_source_user_stats (
+                    id VARCHAR(36) PRIMARY KEY,
+                    source_id VARCHAR(36) NOT NULL REFERENCES question_sources(id) ON DELETE CASCADE,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    in_progress_count INTEGER NOT NULL DEFAULT 0,
+                    completed_count INTEGER NOT NULL DEFAULT 0,
+                    current_question_ordinal INTEGER NOT NULL DEFAULT 0,
+                    completed_attempts INTEGER NOT NULL DEFAULT 0,
+                    completion_rate_percent INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(source_id, user_id)
+                )
+                """
+            )
+        )
+        db.execute(
+            text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_question_sources_subject_exam_checksum "
                 "ON question_sources(subject_id, exam_code, checksum_sha256)"
             )
@@ -72,6 +93,24 @@ class CRUDQuestionSource:
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_questions_source_id ON questions(source_id)"))
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_questions_normalized_hash ON questions(normalized_hash)"))
         db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_questions_source_ordinal ON questions(source_id, ordinal)"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_question_source_user_stats_user_id ON question_source_user_stats(user_id)"))
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_question_source_user_stats_source_id ON question_source_user_stats(source_id)"
+            )
+        )
+        db.execute(
+            text(
+                "ALTER TABLE question_source_user_stats "
+                "ADD COLUMN IF NOT EXISTS current_question_ordinal INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        db.execute(
+            text(
+                "ALTER TABLE question_source_user_stats "
+                "ADD COLUMN IF NOT EXISTS completed_attempts INTEGER NOT NULL DEFAULT 0"
+            )
+        )
 
     def get_or_create_subject(self, db: Session, *, slug: str, code: str) -> Subject:
         subject = db.execute(select(Subject).where(Subject.slug == slug)).scalar_one_or_none()
@@ -195,6 +234,93 @@ class CRUDQuestionSource:
         db.execute(text("DELETE FROM questions WHERE source_id = :source_id"), {"source_id": source_id})
         db.execute(text("DELETE FROM question_sources WHERE id = :source_id"), {"source_id": source_id})
         db.flush()
+
+    def list_user_stats_by_source_ids(self, db: Session, *, user_id: str, source_ids: list[str]) -> dict[str, dict]:
+        if not source_ids:
+            return {}
+        rows = db.execute(
+            text(
+                """
+                SELECT source_id, in_progress_count, completed_count, current_question_ordinal, completed_attempts, completion_rate_percent
+                FROM question_source_user_stats
+                WHERE user_id = :user_id AND source_id = ANY(:source_ids)
+                """
+            ),
+            {"user_id": user_id, "source_ids": source_ids},
+        ).mappings().all()
+        result: dict[str, dict] = {}
+        for row in rows:
+            source_id = str(row["source_id"])
+            result[source_id] = {
+                "in_progress_count": int(row["in_progress_count"] or 0),
+                "completed_count": int(row["completed_count"] or 0),
+                "current_question_ordinal": int(row["current_question_ordinal"] or 0),
+                "completed_attempts": int(row["completed_attempts"] or 0),
+                "completion_rate_percent": int(row["completion_rate_percent"] or 0),
+            }
+        return result
+
+    def upsert_source_user_stats(
+        self,
+        db: Session,
+        *,
+        source_id: str,
+        user_id: str,
+        current_question_ordinal: int,
+        completed_attempts: int,
+        in_progress_count: int,
+        completed_count: int,
+        completion_rate_percent: int,
+    ) -> None:
+        db.execute(
+            text(
+                """
+                INSERT INTO question_source_user_stats (
+                    id,
+                    source_id,
+                    user_id,
+                    current_question_ordinal,
+                    completed_attempts,
+                    in_progress_count,
+                    completed_count,
+                    completion_rate_percent
+                ) VALUES (
+                    :id,
+                    :source_id,
+                    :user_id,
+                    :current_question_ordinal,
+                    :completed_attempts,
+                    :in_progress_count,
+                    :completed_count,
+                    :completion_rate_percent
+                )
+                ON CONFLICT (source_id, user_id)
+                DO UPDATE SET
+                    current_question_ordinal = EXCLUDED.current_question_ordinal,
+                    completed_attempts = EXCLUDED.completed_attempts,
+                    in_progress_count = EXCLUDED.in_progress_count,
+                    completed_count = EXCLUDED.completed_count,
+                    completion_rate_percent = EXCLUDED.completion_rate_percent,
+                    updated_at = NOW()
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "source_id": source_id,
+                "user_id": user_id,
+                "current_question_ordinal": current_question_ordinal,
+                "completed_attempts": completed_attempts,
+                "in_progress_count": in_progress_count,
+                "completed_count": completed_count,
+                "completion_rate_percent": completion_rate_percent,
+            },
+        )
+        db.flush()
+
+    def get_question_by_ordinal(self, db: Session, *, source_id: str, ordinal: int) -> Question | None:
+        return db.execute(
+            select(Question).where(Question.source_id == source_id, Question.ordinal == ordinal)
+        ).scalar_one_or_none()
 
 
 crud_question_source = CRUDQuestionSource()

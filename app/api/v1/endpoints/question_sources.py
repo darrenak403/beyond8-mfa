@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Path, UploadFile
 from fastapi import Form
 from sqlalchemy.orm import Session
 
@@ -7,6 +7,11 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
+    AdminSourceSummary,
+    AnswerCheckRequest,
+    AnswerCheckResponse,
+    DeckProgressUpdateRequest,
+    DeckStatsUpdateRequest,
     SourceQuestionBulkUpdateRequest,
     SourceStateQuestion,
     SourceStateResponse,
@@ -15,13 +20,17 @@ from app.schemas.question_source import (
     UploadSourceResponse,
 )
 from app.services import (
+    check_deck_answer,
     delete_source,
+    get_admin_subject_sources,
     get_deck_questions,
     get_source_state,
     get_subject_bank,
     get_subject_decks,
     ingest_markdown_file,
     list_subjects as service_list_subjects,
+    update_deck_progress,
+    update_deck_stats,
     update_source_from_markdown,
     update_source_questions,
 )
@@ -46,6 +55,18 @@ def list_subjects(db: Session = Depends(get_db), _: User = Depends(get_current_u
     return success_response(data=data)
 
 
+@router.get("/admin/question-sources/subjects", response_model=ApiResponse[list[SubjectSummary]])
+def admin_list_subjects(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+    data = service_list_subjects(db)
+    return success_response(data=data)
+
+
+@router.get("/admin/question-sources/subjects/{slug}/sources", response_model=ApiResponse[list[AdminSourceSummary]])
+def admin_subject_sources(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
+    data = get_admin_subject_sources(db, slug)
+    return success_response(data=data)
+
+
 @router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])
 def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     data = get_source_state(db, slug)
@@ -59,8 +80,8 @@ def subject_bank(slug: str, db: Session = Depends(get_db), _: User = Depends(get
 
 
 @router.get("/subjects/{slug}/decks", response_model=ApiResponse[list[SubjectDeck]])
-def subject_decks(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    data = get_subject_decks(db, slug)
+def subject_decks(slug: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    data = get_subject_decks(db, slug, user_id=current_user.id)
     return success_response(data=data)
 
 
@@ -68,6 +89,65 @@ def subject_decks(slug: str, db: Session = Depends(get_db), _: User = Depends(ge
 def subject_deck_questions(slug: str, deck_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     data = get_deck_questions(db, slug, deck_id)
     return success_response(data=data)
+
+
+@router.post(
+    "/subjects/{slug}/decks/{deck_id}/questions/{question_id}/check",
+    response_model=ApiResponse[AnswerCheckResponse],
+)
+def subject_deck_question_check(
+    slug: str,
+    deck_id: str,
+    question_id: int = Path(ge=1),
+    payload: AnswerCheckRequest = ...,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    data = check_deck_answer(
+        db,
+        slug=slug,
+        deck_id=deck_id,
+        question_id=question_id,
+        selected_answer=payload.selectedAnswer,
+    )
+    return success_response(data=data, message="Checked answer successfully")
+
+
+@router.put("/subjects/{slug}/decks/{deck_id}/progress", response_model=ApiResponse[dict])
+def subject_deck_progress_update(
+    slug: str,
+    deck_id: str,
+    payload: DeckProgressUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = update_deck_progress(
+        db,
+        slug=slug,
+        deck_id=deck_id,
+        user_id=current_user.id,
+        current_question=payload.currentQuestion,
+    )
+    return success_response(data=data, message="Deck progress updated successfully")
+
+
+@router.put("/subjects/{slug}/decks/{deck_id}/stats", response_model=ApiResponse[dict])
+def subject_deck_stats_update(
+    slug: str,
+    deck_id: str,
+    payload: DeckStatsUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = update_deck_stats(
+        db,
+        slug=slug,
+        deck_id=deck_id,
+        user_id=current_user.id,
+        in_progress=payload.inProgress,
+        completed=payload.completed,
+    )
+    return success_response(data=data, message="Deck stats updated successfully")
 
 
 @router.put("/subjects/{slug}/sources/{source_id}/questions", response_model=ApiResponse[dict])
