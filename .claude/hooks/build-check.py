@@ -5,7 +5,6 @@ Detects project type from the edited file and runs the appropriate build/type-ch
 Injects compiler errors as additionalContext. Silent on success or unsupported file types.
 
 Supported:
-  .cs / .csproj  → dotnet build --no-restore -q
   .ts / .tsx     → tsc --noEmit (finds tsconfig.json walking up)
   .py            → python -m py_compile <file>
   .go            → go build ./...  (from module root)
@@ -47,19 +46,6 @@ def run(cmd: list[str], cwd: str) -> str:
 # ---------------------------------------------------------------------------
 # Language-specific checkers
 # ---------------------------------------------------------------------------
-
-def check_dotnet(file_path: Path) -> str | None:
-    csproj = walk_up_glob(file_path, "*.csproj")
-    if not csproj:
-        return None
-    sln_root = walk_up_glob(file_path, "*.sln")
-    cwd = str(sln_root.parent if sln_root else csproj.parent)
-    output = run(["dotnet", "build", str(csproj), "--no-restore", "-q"], cwd)
-    errors = [l for l in output.splitlines() if re.search(r": error CS\d+:", l)]
-    if errors:
-        return f"dotnet build errors in {csproj.name}:\n" + "\n".join(errors[:5])
-    return None
-
 
 def check_typescript(file_path: Path) -> str | None:
     tsconfig = walk_up(file_path, "tsconfig.json")
@@ -114,7 +100,6 @@ def check_rust(file_path: Path) -> str | None:
 # ---------------------------------------------------------------------------
 
 CHECKERS: dict[str, callable] = {
-    ".cs": check_dotnet,
     ".ts": check_typescript,
     ".tsx": check_typescript,
     ".py": check_python,

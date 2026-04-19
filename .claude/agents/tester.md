@@ -38,20 +38,16 @@ Detect the project stack first, then run the full test suite — not just the ne
 
 ```bash
 # Detect stack
-ls *.csproj */*.csproj 2>/dev/null && echo .NET
 ls package.json 2>/dev/null && echo Node
-ls pyproject.toml setup.py 2>/dev/null && echo Python
+ls pyproject.toml setup.py requirements.txt 2>/dev/null && echo Python
 ```
 
 ```bash
-# .NET
-dotnet test
-
 # Node/TypeScript
 npm test
 
 # Python
-pytest
+python -m pytest
 
 # Or use task runner if present (Makefile, Taskfile, package.json scripts)
 ```
@@ -86,6 +82,6 @@ Action required: spawn debugger
 
 - Do not modify implementation code — only test code
 - Do not skip tests to make the suite pass
-- If you cannot determine test conventions in 3 tool calls, write standard xUnit/Jest/pytest tests
+- If you cannot determine test conventions in 3 tool calls, write standard pytest (or Jest for Node) tests
 - Always run the full suite, not just the new tests
 - If the test suite cannot be run (missing deps, build error), report that explicitly

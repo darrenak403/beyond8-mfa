@@ -40,14 +40,11 @@ Spawn the `code-reviewer` agent with:
 Detect the project stack and run the appropriate build + test commands:
 
 ```bash
-# .NET
-dotnet build --no-restore -q && dotnet test
+# Python (this repo — FastAPI)
+python -m pytest
 
 # Node / TypeScript
 npm run build && npm test
-
-# Python
-python -m pytest
 
 # Or use task runner if present (Makefile, Taskfile, package.json scripts)
 ```
