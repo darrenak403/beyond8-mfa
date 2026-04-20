@@ -296,7 +296,8 @@ def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
     payload = [
         {
             "sourceId": source.id,
-            "examCode": source.exam_code,
+            # FE wants Exam column to display file name without `.md`.
+            "examCode": re.sub(r"\.md$", "", source.file_name, flags=re.IGNORECASE),
             "fileName": source.file_name,
             "questionCount": int(source.question_count or 0),
             "isAggregatedBank": _is_aggregated_bank_filename(source.file_name),
