@@ -201,6 +201,23 @@ class CRUDQuestionSource:
     def list_source_questions(self, db: Session, source_id: str) -> list[Question]:
         return list(db.execute(select(Question).where(Question.source_id == source_id).order_by(Question.ordinal.asc())).scalars().all())
 
+    def list_questions_by_source_ids(self, db: Session, source_ids: list[str]) -> dict[str, list[Question]]:
+        """Load questions for many sources in one round-trip (avoids N+1 per source)."""
+        if not source_ids:
+            return {}
+        ordered_unique = list(dict.fromkeys(source_ids))
+        rows = list(
+            db.execute(
+                select(Question)
+                .where(Question.source_id.in_(ordered_unique))
+                .order_by(Question.source_id.asc(), Question.ordinal.asc())
+            ).scalars().all()
+        )
+        grouped: dict[str, list[Question]] = {sid: [] for sid in ordered_unique}
+        for question in rows:
+            grouped[question.source_id].append(question)
+        return grouped
+
     def list_sources_by_subject(self, db: Session, subject_id: str) -> list[QuestionSource]:
         return list(
             db.execute(

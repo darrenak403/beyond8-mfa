@@ -325,14 +325,17 @@ def get_source_state(db: Session, slug: str) -> dict:
     bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
     deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
 
-    bank_questions = crud_question_source.list_source_questions(db, bank_source.id)
+    load_ids = [bank_source.id, *[s.id for s in deck_sources]]
+    questions_by_source = crud_question_source.list_questions_by_source_ids(db, load_ids)
+
+    bank_questions = questions_by_source.get(bank_source.id, [])
     bank_formatted = [
         {"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text}
         for idx, item in enumerate(bank_questions, start=1)
     ]
     deck_questions: list[dict] = []
     for source in deck_sources:
-        questions = crud_question_source.list_source_questions(db, source.id)
+        questions = questions_by_source.get(source.id, [])
         deck_questions.extend(
             {"id": idx + len(deck_questions), "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text}
             for idx, item in enumerate(questions, start=1)
