@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from sqlalchemy import select, text
@@ -75,6 +76,7 @@ class CRUDQuestionSource:
                     in_progress_count INTEGER NOT NULL DEFAULT 0,
                     completed_count INTEGER NOT NULL DEFAULT 0,
                     current_question_ordinal INTEGER NOT NULL DEFAULT 0,
+                    attempted_question_ordinals JSONB NOT NULL DEFAULT '[]'::jsonb,
                     completed_attempts INTEGER NOT NULL DEFAULT 0,
                     completion_rate_percent INTEGER NOT NULL DEFAULT 0,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,6 +105,12 @@ class CRUDQuestionSource:
             text(
                 "ALTER TABLE question_source_user_stats "
                 "ADD COLUMN IF NOT EXISTS current_question_ordinal INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        db.execute(
+            text(
+                "ALTER TABLE question_source_user_stats "
+                "ADD COLUMN IF NOT EXISTS attempted_question_ordinals JSONB NOT NULL DEFAULT '[]'::jsonb"
             )
         )
         db.execute(
@@ -258,7 +266,15 @@ class CRUDQuestionSource:
         rows = db.execute(
             text(
                 """
-                SELECT source_id, in_progress_count, completed_count, current_question_ordinal, completed_attempts, completion_rate_percent
+                SELECT
+                    source_id,
+                    in_progress_count,
+                    completed_count,
+                    current_question_ordinal,
+                    attempted_question_ordinals,
+                    completed_attempts,
+                    completion_rate_percent,
+                    updated_at
                 FROM question_source_user_stats
                 WHERE user_id = :user_id AND source_id = ANY(:source_ids)
                 """
@@ -272,8 +288,10 @@ class CRUDQuestionSource:
                 "in_progress_count": int(row["in_progress_count"] or 0),
                 "completed_count": int(row["completed_count"] or 0),
                 "current_question_ordinal": int(row["current_question_ordinal"] or 0),
+                "attempted_question_ordinals": list(row.get("attempted_question_ordinals") or []),
                 "completed_attempts": int(row["completed_attempts"] or 0),
                 "completion_rate_percent": int(row["completion_rate_percent"] or 0),
+                "updated_at": row.get("updated_at"),
             }
         return result
 
@@ -284,6 +302,7 @@ class CRUDQuestionSource:
         source_id: str,
         user_id: str,
         current_question_ordinal: int,
+        attempted_question_ordinals: list[int],
         completed_attempts: int,
         in_progress_count: int,
         completed_count: int,
@@ -297,6 +316,7 @@ class CRUDQuestionSource:
                     source_id,
                     user_id,
                     current_question_ordinal,
+                    attempted_question_ordinals,
                     completed_attempts,
                     in_progress_count,
                     completed_count,
@@ -306,6 +326,7 @@ class CRUDQuestionSource:
                     :source_id,
                     :user_id,
                     :current_question_ordinal,
+                    CAST(:attempted_question_ordinals AS JSONB),
                     :completed_attempts,
                     :in_progress_count,
                     :completed_count,
@@ -314,6 +335,7 @@ class CRUDQuestionSource:
                 ON CONFLICT (source_id, user_id)
                 DO UPDATE SET
                     current_question_ordinal = EXCLUDED.current_question_ordinal,
+                    attempted_question_ordinals = EXCLUDED.attempted_question_ordinals,
                     completed_attempts = EXCLUDED.completed_attempts,
                     in_progress_count = EXCLUDED.in_progress_count,
                     completed_count = EXCLUDED.completed_count,
@@ -326,6 +348,7 @@ class CRUDQuestionSource:
                 "source_id": source_id,
                 "user_id": user_id,
                 "current_question_ordinal": current_question_ordinal,
+                "attempted_question_ordinals": json.dumps(attempted_question_ordinals),
                 "completed_attempts": completed_attempts,
                 "in_progress_count": in_progress_count,
                 "completed_count": completed_count,

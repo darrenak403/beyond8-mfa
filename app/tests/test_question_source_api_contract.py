@@ -174,13 +174,32 @@ def test_check_answer_ok(monkeypatch):
 
 
 def test_put_deck_progress_ok(monkeypatch):
-    monkeypatch.setattr(qs, "update_deck_progress", lambda _db, **kwargs: {"ok": True})
+    def _update(_db, **kwargs):
+        assert kwargs["attempted_question_ordinals"] == [1, 2, 2, 3]
+        return {"ok": True}
+
+    monkeypatch.setattr(qs, "update_deck_progress", _update)
     response = _run(
         "PUT",
         "/api/v1/subjects/pmg201c/decks/d1/progress",
-        json={"currentQuestion": 3},
+        json={"currentQuestion": 3, "attemptedQuestionOrdinals": [1, 2, 2, 3]},
     )
     assert response.status_code == 200
+
+
+def test_get_deck_progress_ok(monkeypatch):
+    monkeypatch.setattr(
+        qs,
+        "get_deck_progress",
+        lambda _db, **kwargs: {
+            "currentQuestion": 12,
+            "attemptedQuestionOrdinals": [1, 2, 3],
+            "updatedAt": "2026-04-20T03:10:00+00:00",
+        },
+    )
+    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/progress")
+    assert response.status_code == 200
+    assert response.json()["data"]["attemptedQuestionOrdinals"] == [1, 2, 3]
 
 
 def test_put_deck_stats_ok(monkeypatch):

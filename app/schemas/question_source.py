@@ -91,6 +91,13 @@ class DeckStatsUpdateRequest(BaseModel):
 
 class DeckProgressUpdateRequest(BaseModel):
     currentQuestion: int = Field(ge=0, le=10000)
+    attemptedQuestionOrdinals: list[int] = Field(default_factory=list, max_length=10000)
+
+
+class DeckProgressResponse(BaseModel):
+    currentQuestion: int
+    attemptedQuestionOrdinals: list[int]
+    updatedAt: str | None = None
 
 
 class AnswerCheckRequest(BaseModel):

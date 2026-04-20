@@ -402,6 +402,13 @@ def _build_deck_stats(
     }
 
 
+def _normalize_attempted_ordinals(raw_ordinals: object, *, question_count: int) -> list[int]:
+    if not isinstance(raw_ordinals, list):
+        return []
+    normalized = sorted({value for value in raw_ordinals if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= question_count})
+    return normalized
+
+
 def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> list[dict]:
     normalized_slug = slug.lower()
     if user_id:
@@ -497,12 +504,20 @@ def update_deck_stats(
     completion_rate_percent = 0
     if total_questions > 0:
         completion_rate_percent = int(round((in_progress / total_questions) * 100))
+    current_stats = crud_question_source.list_user_stats_by_source_ids(
+        db, user_id=user_id, source_ids=[source.id]
+    ).get(source.id, {})
+    attempted_question_ordinals = _normalize_attempted_ordinals(
+        current_stats.get("attempted_question_ordinals", []),
+        question_count=total_questions,
+    )
 
     crud_question_source.upsert_source_user_stats(
         db,
         source_id=source.id,
         user_id=user_id,
         current_question_ordinal=in_progress,
+        attempted_question_ordinals=attempted_question_ordinals,
         completed_attempts=completed,
         in_progress_count=in_progress,
         completed_count=completed,
@@ -525,6 +540,7 @@ def update_deck_progress(
     deck_id: str,
     user_id: str,
     current_question: int,
+    attempted_question_ordinals: list[int],
 ) -> dict:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
@@ -534,13 +550,23 @@ def update_deck_progress(
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
 
     total_questions = int(source.question_count or 0)
-    if current_question > total_questions:
+    invalid_ordinals = [
+        value
+        for value in attempted_question_ordinals
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1 or value > total_questions
+    ]
+    if invalid_ordinals:
         raise _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "INVALID_PROGRESS",
-            "currentQuestion cannot exceed total questions of this deck.",
-            details={"total": total_questions, "currentQuestion": current_question},
+            "INVALID_ATTEMPTED_QUESTION_ORDINALS",
+            "attemptedQuestionOrdinals must be within 1..questionCount.",
+            details={"questionCount": total_questions, "invalidOrdinals": invalid_ordinals},
         )
+    clamped_current_question = min(max(current_question, 0), total_questions)
+    normalized_attempted_ordinals = _normalize_attempted_ordinals(
+        attempted_question_ordinals,
+        question_count=total_questions,
+    )
 
     current_stats = crud_question_source.list_user_stats_by_source_ids(
         db, user_id=user_id, source_ids=[source.id]
@@ -549,20 +575,21 @@ def update_deck_progress(
         current_stats.get("current_question_ordinal", current_stats.get("in_progress_count", 0))
     )
     completed_attempts = int(current_stats.get("completed_attempts", current_stats.get("completed_count", 0)))
-    if total_questions > 0 and current_question >= total_questions and previous_current < total_questions:
+    if total_questions > 0 and clamped_current_question >= total_questions and previous_current < total_questions:
         completed_attempts += 1
 
     completion_rate_percent = 0
     if total_questions > 0:
-        completion_rate_percent = int(round((current_question / total_questions) * 100))
+        completion_rate_percent = int(round((clamped_current_question / total_questions) * 100))
 
     crud_question_source.upsert_source_user_stats(
         db,
         source_id=source.id,
         user_id=user_id,
-        current_question_ordinal=current_question,
+        current_question_ordinal=clamped_current_question,
+        attempted_question_ordinals=normalized_attempted_ordinals,
         completed_attempts=completed_attempts,
-        in_progress_count=current_question,
+        in_progress_count=clamped_current_question,
         completed_count=completed_attempts,
         completion_rate_percent=completion_rate_percent,
     )
@@ -571,7 +598,50 @@ def update_deck_progress(
     return {
         "deckId": source.id,
         "subjectSlug": subject.slug,
-        "stats": _build_deck_stats(total_questions, current_question, completed_attempts),
+        "stats": _build_deck_stats(total_questions, clamped_current_question, completed_attempts),
+        "currentQuestion": clamped_current_question,
+        "attemptedQuestionOrdinals": normalized_attempted_ordinals,
+    }
+
+
+def get_deck_progress(
+    db: Session,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    total_questions = int(source.question_count or 0)
+    current_stats = crud_question_source.list_user_stats_by_source_ids(
+        db, user_id=user_id, source_ids=[source.id]
+    ).get(source.id)
+    if current_stats is None:
+        return {
+            "currentQuestion": 0,
+            "attemptedQuestionOrdinals": [],
+            "updatedAt": None,
+        }
+
+    current_question = min(
+        max(int(current_stats.get("current_question_ordinal", 0)), 0),
+        total_questions,
+    )
+    attempted_question_ordinals = _normalize_attempted_ordinals(
+        current_stats.get("attempted_question_ordinals", []),
+        question_count=total_questions,
+    )
+    updated_at = current_stats.get("updated_at")
+    return {
+        "currentQuestion": current_question,
+        "attemptedQuestionOrdinals": attempted_question_ordinals,
+        "updatedAt": updated_at.isoformat() if updated_at else None,
     }
 
 

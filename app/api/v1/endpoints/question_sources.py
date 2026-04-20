@@ -11,6 +11,7 @@ from app.schemas.question_source import (
     AnswerCheckRequest,
     AnswerCheckResponse,
     DeckProgressUpdateRequest,
+    DeckProgressResponse,
     DeckStatsUpdateRequest,
     SourceQuestionBulkUpdateRequest,
     SourceStateQuestion,
@@ -30,6 +31,7 @@ from app.services import (
     ingest_markdown_file,
     list_subjects as service_list_subjects,
     update_deck_progress,
+    get_deck_progress,
     update_deck_stats,
     update_source_from_markdown,
     update_source_questions,
@@ -164,8 +166,25 @@ def subject_deck_progress_update(
         deck_id=deck_id,
         user_id=current_user.id,
         current_question=payload.currentQuestion,
+        attempted_question_ordinals=payload.attemptedQuestionOrdinals,
     )
     return success_response(data=data, message="Deck progress updated successfully")
+
+
+@user_router.get("/subjects/{slug}/decks/{deck_id}/progress", response_model=ApiResponse[DeckProgressResponse])
+def subject_deck_progress_get(
+    slug: str,
+    deck_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = get_deck_progress(
+        db,
+        slug=slug,
+        deck_id=deck_id,
+        user_id=current_user.id,
+    )
+    return success_response(data=data)
 
 
 @user_router.put("/subjects/{slug}/decks/{deck_id}/stats", response_model=ApiResponse[dict])

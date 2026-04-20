@@ -8,6 +8,7 @@ from app.services.question_source_service import (
     check_deck_answer,
     detect_subject_and_exam,
     detect_subject_and_exam_with_fallback,
+    get_deck_progress,
     get_subject_decks,
     ingest_markdown_file,
     parse_questions,
@@ -163,10 +164,64 @@ def test_update_deck_progress_increments_completed_attempts(monkeypatch) -> None
         deck_id="src-deck",
         user_id="user-1",
         current_question=50,
+        attempted_question_ordinals=[5, 2, 2, 1],
     )
     assert result["stats"]["completionRatePercent"] == 100
     assert result["stats"]["completed"] == 1
+    assert result["attemptedQuestionOrdinals"] == [1, 2, 5]
     fake_crud.upsert_source_user_stats.assert_called_once()
+
+
+def test_update_deck_progress_rejects_invalid_attempted_ordinals(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=5)
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    fake_crud.list_user_stats_by_source_ids.return_value = {}
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    try:
+        update_deck_progress(
+            Mock(),
+            slug="pmg201c",
+            deck_id="src-deck",
+            user_id="user-1",
+            current_question=3,
+            attempted_question_ordinals=[1, 2, 9],
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 422
+        assert exc.detail["error"]["code"] == "INVALID_ATTEMPTED_QUESTION_ORDINALS"
+    else:
+        raise AssertionError("Expected HTTPException for invalid attempted ordinals")
+
+
+def test_get_deck_progress_filters_invalid_ordinals(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=5)
+    fake_updated_at = SimpleNamespace(isoformat=lambda: "2026-04-20T03:10:00+00:00")
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    fake_crud.list_user_stats_by_source_ids.return_value = {
+        "src-deck": {
+            "current_question_ordinal": 8,
+            "attempted_question_ordinals": [5, 3, 3, 10, 0],
+            "updated_at": fake_updated_at,
+        }
+    }
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    result = get_deck_progress(
+        Mock(),
+        slug="pmg201c",
+        deck_id="src-deck",
+        user_id="user-1",
+    )
+    assert result["currentQuestion"] == 5
+    assert result["attemptedQuestionOrdinals"] == [3, 5]
+    assert result["updatedAt"] == "2026-04-20T03:10:00+00:00"
 
 
 def test_check_deck_answer_returns_correctness(monkeypatch) -> None:
