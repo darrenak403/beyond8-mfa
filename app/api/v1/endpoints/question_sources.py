@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, File, Path, UploadFile
-from fastapi import Form
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, require_course_access
@@ -7,7 +8,6 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
-    AdminSourceSummary,
     AnswerCheckRequest,
     AnswerCheckResponse,
     DeckProgressUpdateRequest,
@@ -16,15 +16,15 @@ from app.schemas.question_source import (
     SourceQuestionBulkUpdateRequest,
     SourceStateQuestion,
     SourceStateResponse,
-    SubjectDeck,
-    SubjectSummary,
     UploadSourceResponse,
 )
+from app.utils.pagination import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_slice
 from app.services import (
     check_deck_answer,
     delete_source,
     get_admin_subject_sources,
     get_deck_questions,
+    get_deck_questions_page,
     get_source_state,
     get_subject_bank,
     get_subject_decks,
@@ -88,22 +88,51 @@ def legacy_upload_source_markdown(
     )
 
 
-@user_router.get("/subjects", response_model=ApiResponse[list[SubjectSummary]])
-def list_subjects(db: Session = Depends(get_db), _: User = Depends(require_course_access)):
-    data = service_list_subjects(db)
-    return success_response(data=data)
+@user_router.get(
+    "/subjects",
+    response_model=ApiResponse[Any],
+    summary="List subjects (paginated)",
+    description=f"Default `page={DEFAULT_PAGE}`, `limit={DEFAULT_PAGE_SIZE}` (max `limit={MAX_PAGE_SIZE}`).",
+)
+def list_subjects(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_course_access),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+):
+    full = service_list_subjects(db)
+    return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
-@admin_router.get("/admin/question-sources/subjects", response_model=ApiResponse[list[SubjectSummary]])
-def admin_list_subjects(db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
-    data = service_list_subjects(db)
-    return success_response(data=data)
+@admin_router.get(
+    "/admin/question-sources/subjects",
+    response_model=ApiResponse[Any],
+    summary="Admin: list subjects (paginated)",
+)
+def admin_list_subjects(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+):
+    full = service_list_subjects(db)
+    return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
-@admin_router.get("/admin/question-sources/subjects/{slug}/sources", response_model=ApiResponse[list[AdminSourceSummary]])
-def admin_subject_sources(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_admin)):
-    data = get_admin_subject_sources(db, slug)
-    return success_response(data=data)
+@admin_router.get(
+    "/admin/question-sources/subjects/{slug}/sources",
+    response_model=ApiResponse[Any],
+    summary="Admin: list sources for subject (paginated)",
+)
+def admin_subject_sources(
+    slug: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+):
+    full = get_admin_subject_sources(db, slug)
+    return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])
@@ -112,21 +141,70 @@ def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(req
     return success_response(data=data)
 
 
-@user_router.get("/subjects/{slug}/bank", response_model=ApiResponse[list[SourceStateQuestion]])
-def subject_bank(slug: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
+@user_router.get(
+    "/subjects/{slug}/bank",
+    response_model=ApiResponse[Any],
+    summary="Subject bank questions (full list or paginated)",
+    description=(
+        "Without `page`: returns `data` as a full array (legacy). "
+        "With `page`: returns paginated object; `limit` optional (default 10, max "
+        f"{MAX_PAGE_SIZE}), controlled by the client."
+    ),
+)
+def subject_bank(
+    slug: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_course_access),
+    page: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=MAX_PAGE_SIZE),
+):
     data = get_subject_bank(db, slug)
-    return success_response(data=data)
+    if page is None:
+        return success_response(data=data)
+    eff_limit = DEFAULT_PAGE_SIZE if limit is None else limit
+    return success_response(data=paginate_slice(data, page=page, limit=eff_limit))
 
 
-@user_router.get("/subjects/{slug}/decks", response_model=ApiResponse[list[SubjectDeck]])
-def subject_decks(slug: str, db: Session = Depends(get_db), current_user: User = Depends(require_course_access)):
-    data = get_subject_decks(db, slug, user_id=current_user.id)
-    return success_response(data=data)
+@user_router.get(
+    "/subjects/{slug}/decks",
+    response_model=ApiResponse[Any],
+    summary="List decks for subject (paginated)",
+    description=f"Default `page={DEFAULT_PAGE}`, `limit={DEFAULT_PAGE_SIZE}`.",
+)
+def subject_decks(
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_course_access),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+):
+    full = get_subject_decks(db, slug, user_id=current_user.id)
+    return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
-@user_router.get("/subjects/{slug}/decks/{deck_id}/questions", response_model=ApiResponse[list[SourceStateQuestion]])
-def subject_deck_questions(slug: str, deck_id: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
-    data = get_deck_questions(db, slug, deck_id)
+@user_router.get(
+    "/subjects/{slug}/decks/{deck_id}/questions",
+    response_model=ApiResponse[Any],
+    summary="List deck questions (full or paginated)",
+    description=(
+        "Without `page`: returns `data` as a full list (legacy). "
+        "With `page`: returns `data` as an object with `items`, `page`, `limit`, `total`, "
+        "`totalPages`, `hasNext`, `hasPrevious`. When `page` is set, `limit` defaults to 1 (one question per page)."
+    ),
+)
+def subject_deck_questions(
+    slug: str,
+    deck_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_course_access),
+    page: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=50),
+):
+    if page is None:
+        data = get_deck_questions(db, slug, deck_id)
+        return success_response(data=data)
+    effective_limit = 1 if limit is None else limit
+    data = get_deck_questions_page(db, slug, deck_id, page=page, limit=effective_limit)
     return success_response(data=data)
 
 

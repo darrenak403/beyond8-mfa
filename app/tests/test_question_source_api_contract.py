@@ -61,7 +61,12 @@ def test_get_subjects_empty(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body.get("success") is True
-    assert body.get("data") == []
+    data = body.get("data")
+    assert isinstance(data, dict)
+    assert data["items"] == []
+    assert data["total"] == 0
+    assert data["page"] == 1
+    assert data["limit"] == 10
 
 
 def test_get_subjects_nonempty(monkeypatch):
@@ -73,8 +78,10 @@ def test_get_subjects_nonempty(monkeypatch):
     response = _run("GET", "/api/v1/subjects")
     assert response.status_code == 200
     data = response.json().get("data")
-    assert isinstance(data, list)
-    assert data[0]["slug"] == "pmg201c"
+    assert isinstance(data, dict)
+    assert data["items"][0]["slug"] == "pmg201c"
+    assert data["total"] == 1
+    assert data["hasNext"] is False
 
 
 def test_get_decks_ok(monkeypatch):
@@ -100,7 +107,8 @@ def test_get_decks_ok(monkeypatch):
     monkeypatch.setattr(qs, "get_subject_decks", _decks)
     response = _run("GET", "/api/v1/subjects/pmg201c/decks")
     assert response.status_code == 200
-    assert response.json()["data"][0]["deckId"] == "d1"
+    assert response.json()["data"]["items"][0]["deckId"] == "d1"
+    assert response.json()["data"]["total"] == 1
 
 
 def test_get_bank_empty(monkeypatch):
@@ -108,6 +116,25 @@ def test_get_bank_empty(monkeypatch):
     response = _run("GET", "/api/v1/subjects/pmg201c/bank")
     assert response.status_code == 200
     assert response.json()["data"] == []
+
+
+def test_get_bank_paginated(monkeypatch):
+    monkeypatch.setattr(
+        qs,
+        "get_subject_bank",
+        lambda _db, _slug: [
+            {"id": 1, "stem": "A", "options": [], "answer": "A"},
+            {"id": 2, "stem": "B", "options": [], "answer": "B"},
+        ],
+    )
+    response = _run("GET", "/api/v1/subjects/pmg201c/bank?page=1&limit=1")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert isinstance(data, dict)
+    assert len(data["items"]) == 1
+    assert data["items"][0]["stem"] == "A"
+    assert data["total"] == 2
+    assert data["hasNext"] is True
 
 
 def test_get_deck_questions_ok(monkeypatch):
@@ -121,6 +148,81 @@ def test_get_deck_questions_ok(monkeypatch):
     response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions")
     assert response.status_code == 200
     assert response.json()["data"][0]["stem"] == "Q1"
+
+
+def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
+    monkeypatch.setattr(
+        qs,
+        "get_deck_questions_page",
+        lambda _db, slug, deck_id, page, limit: {
+            "items": [{"id": 1, "stem": "Q1", "options": [{"label": "A", "text": "Yes"}], "answer": "A"}],
+            "page": 1,
+            "limit": 1,
+            "total": 3,
+            "totalPages": 3,
+            "hasNext": True,
+            "hasPrevious": False,
+        },
+    )
+    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions?page=1&limit=1")
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["data"], dict)
+    assert body["data"]["page"] == 1
+    assert body["data"]["limit"] == 1
+    assert body["data"]["total"] == 3
+    assert body["data"]["totalPages"] == 3
+    assert body["data"]["hasNext"] is True
+    assert body["data"]["hasPrevious"] is False
+    assert len(body["data"]["items"]) == 1
+    assert body["data"]["items"][0]["id"] == 1
+    assert body["data"]["items"][0]["stem"] == "Q1"
+
+
+def test_get_deck_questions_paginated_page_default_limit(monkeypatch):
+    """When `page` is set and `limit` omitted, service receives limit=1."""
+
+    def _page(_db, slug, deck_id, *, page, limit):
+        assert page == 2
+        assert limit == 1
+        return {
+            "items": [{"id": 2, "stem": "Q2", "options": [], "answer": "B"}],
+            "page": 2,
+            "limit": 1,
+            "total": 2,
+            "totalPages": 2,
+            "hasNext": False,
+            "hasPrevious": True,
+        }
+
+    monkeypatch.setattr(qs, "get_deck_questions_page", _page)
+    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions?page=2")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["items"][0]["id"] == 2
+    assert data["hasNext"] is False
+    assert data["hasPrevious"] is True
+
+
+def test_get_deck_questions_paginated_beyond_last_page(monkeypatch):
+    monkeypatch.setattr(
+        qs,
+        "get_deck_questions_page",
+        lambda _db, slug, deck_id, page, limit: {
+            "items": [],
+            "page": 99,
+            "limit": 1,
+            "total": 2,
+            "totalPages": 2,
+            "hasNext": False,
+            "hasPrevious": True,
+        },
+    )
+    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions?page=99&limit=1")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["items"] == []
+    assert data["hasNext"] is False
 
 
 def test_get_source_state_ok(monkeypatch):

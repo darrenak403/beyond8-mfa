@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import math
 import re
 import unicodedata
 
@@ -478,6 +479,45 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
     payload = [{"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(questions, start=1)]
     cache_service.set_json(cache_key, payload, _CACHE_DECK_QUESTIONS_TTL_SECONDS)
     return payload
+
+
+def get_deck_questions_page(db: Session, slug: str, deck_id: str, *, page: int, limit: int) -> dict:
+    """Paginated deck questions (no full-deck Redis cache; uses DB slice + subject question_count for total)."""
+    normalized_slug = slug.lower()
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    total = int(source.question_count or 0)
+    if total <= 0:
+        total_pages = 0
+        items: list[dict] = []
+    else:
+        total_pages = max(1, math.ceil(total / limit))
+        offset = (page - 1) * limit
+        slice_rows = crud_question_source.list_source_questions_payload_slice(
+            db, source.id, offset=offset, limit=limit
+        )
+        items = [
+            {"id": offset + idx + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
+            for idx, item in enumerate(slice_rows)
+        ]
+
+    has_next = total > 0 and page < total_pages
+    has_previous = page > 1 and total > 0
+
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "totalPages": total_pages,
+        "hasNext": has_next,
+        "hasPrevious": has_previous,
+    }
 
 
 def update_deck_stats(

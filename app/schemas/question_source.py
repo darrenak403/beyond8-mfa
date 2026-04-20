@@ -35,6 +35,18 @@ class SourceStateQuestion(BaseModel):
     answer: str
 
 
+class DeckQuestionsPage(BaseModel):
+    """Paginated slice of deck questions; `id` on each item is 1-based index in deck order (same as non-paginated GET)."""
+
+    items: list[SourceStateQuestion]
+    page: int
+    limit: int
+    total: int
+    totalPages: int
+    hasNext: bool
+    hasPrevious: bool
+
+
 class SourceFileMeta(BaseModel):
     class SourceRange(BaseModel):
         start: int

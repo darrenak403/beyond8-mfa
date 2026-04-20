@@ -225,6 +225,27 @@ class CRUDQuestionSource:
             for row in rows
         ]
 
+    def list_source_questions_payload_slice(self, db: Session, source_id: str, *, offset: int, limit: int) -> list[dict]:
+        """Ordered slice by ordinal for pagination (offset/limit)."""
+        if limit <= 0:
+            return []
+        rows = db.execute(
+            select(Question.ordinal, Question.stem, Question.options_json, Question.answer_text)
+            .where(Question.source_id == source_id)
+            .order_by(Question.ordinal.asc())
+            .offset(max(0, offset))
+            .limit(limit)
+        ).all()
+        return [
+            {
+                "ordinal": int(row.ordinal or 0),
+                "stem": row.stem,
+                "options": row.options_json or [],
+                "answer": row.answer_text,
+            }
+            for row in rows
+        ]
+
     def list_questions_by_source_ids(self, db: Session, source_ids: list[str]) -> dict[str, list[Question]]:
         """Load questions for many sources in one round-trip (avoids N+1 per source)."""
         if not source_ids:

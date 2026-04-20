@@ -51,3 +51,33 @@ Hệ thống nên được đưa vào venv để khởi chạy:
 # Khởi chạy server API
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 3636
 ```
+
+## 4. Question Sources — phân trang
+
+### 4.1 Danh sách (mặc định `page=1`, `limit=10`, tối đa `limit=100`)
+
+Các endpoint sau luôn trả `data` dạng object **`{ items, page, limit, total, totalPages, hasNext, hasPrevious }`**:
+
+- `GET /api/v1/subjects`
+- `GET /api/v1/admin/question-sources/subjects`
+- `GET /api/v1/admin/question-sources/subjects/{slug}/sources`
+- `GET /api/v1/subjects/{slug}/decks`
+
+### 4.2 Ngân hàng câu (`/bank`) — do FE chỉ định trang
+
+`GET /api/v1/subjects/{slug}/bank`
+
+- **Không `page`:** `data` là **mảng** toàn bộ câu (hành vi cũ).
+- **Có `page`:** `data` là object phân trang như mục 4.1; `limit` tùy chọn (mặc định 10, tối đa 100).
+
+### 4.3 Câu theo từng đề (`/decks/{deck_id}/questions`)
+
+`GET /api/v1/subjects/{slug}/decks/{deck_id}/questions`
+
+- **Không query:** `data` là **mảng** toàn bộ câu (hành vi cũ, có cache Redis full deck).
+- **Có `page` (≥1):** `data` là **object** phân trang.
+  - `limit`: tùy chọn, 1–50; **mặc định 1** khi chỉ gửi `page` (một câu mỗi trang).
+  - `total` lấy từ `question_count` của deck trên DB.
+  - Mỗi phần tử `items` vẫn có `answer`. Muốn chấm điểm tin cậy, dùng `POST .../questions/{question_id}/check`.
+
+Ví dụ một câu mỗi trang: `.../questions?page=2` (tương đương `page=2&limit=1`). Sau khi trả lời đúng, client gọi trang tiếp theo.
