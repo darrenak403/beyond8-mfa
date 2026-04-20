@@ -209,6 +209,22 @@ class CRUDQuestionSource:
     def list_source_questions(self, db: Session, source_id: str) -> list[Question]:
         return list(db.execute(select(Question).where(Question.source_id == source_id).order_by(Question.ordinal.asc())).scalars().all())
 
+    def list_source_questions_payload(self, db: Session, source_id: str) -> list[dict]:
+        rows = db.execute(
+            select(Question.ordinal, Question.stem, Question.options_json, Question.answer_text)
+            .where(Question.source_id == source_id)
+            .order_by(Question.ordinal.asc())
+        ).all()
+        return [
+            {
+                "ordinal": int(row.ordinal or 0),
+                "stem": row.stem,
+                "options": row.options_json or [],
+                "answer": row.answer_text,
+            }
+            for row in rows
+        ]
+
     def list_questions_by_source_ids(self, db: Session, source_ids: list[str]) -> dict[str, list[Question]]:
         """Load questions for many sources in one round-trip (avoids N+1 per source)."""
         if not source_ids:
@@ -224,6 +240,28 @@ class CRUDQuestionSource:
         grouped: dict[str, list[Question]] = {sid: [] for sid in ordered_unique}
         for question in rows:
             grouped[question.source_id].append(question)
+        return grouped
+
+    def list_questions_payload_by_source_ids(self, db: Session, source_ids: list[str]) -> dict[str, list[dict]]:
+        """Load lightweight question payload for many sources in one round-trip."""
+        if not source_ids:
+            return {}
+        ordered_unique = list(dict.fromkeys(source_ids))
+        rows = db.execute(
+            select(Question.source_id, Question.ordinal, Question.stem, Question.options_json, Question.answer_text)
+            .where(Question.source_id.in_(ordered_unique))
+            .order_by(Question.source_id.asc(), Question.ordinal.asc())
+        ).all()
+        grouped: dict[str, list[dict]] = {sid: [] for sid in ordered_unique}
+        for row in rows:
+            grouped[row.source_id].append(
+                {
+                    "ordinal": int(row.ordinal or 0),
+                    "stem": row.stem,
+                    "options": row.options_json or [],
+                    "answer": row.answer_text,
+                }
+            )
         return grouped
 
     def list_sources_by_subject(self, db: Session, subject_id: str) -> list[QuestionSource]:

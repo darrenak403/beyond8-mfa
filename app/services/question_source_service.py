@@ -326,33 +326,41 @@ def get_source_state(db: Session, slug: str) -> dict:
     deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
 
     load_ids = [bank_source.id, *[s.id for s in deck_sources]]
-    questions_by_source = crud_question_source.list_questions_by_source_ids(db, load_ids)
+    questions_by_source = crud_question_source.list_questions_payload_by_source_ids(db, load_ids)
 
     bank_questions = questions_by_source.get(bank_source.id, [])
     bank_formatted = [
-        {"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text}
+        {"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
         for idx, item in enumerate(bank_questions, start=1)
     ]
     deck_questions: list[dict] = []
+    files: list[dict] = []
+    running_index = 0
     for source in deck_sources:
         questions = questions_by_source.get(source.id, [])
-        deck_questions.extend(
-            {"id": idx + len(deck_questions), "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text}
-            for idx, item in enumerate(questions, start=1)
+        start = running_index
+        next_questions = [
+            {"id": idx + running_index + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
+            for idx, item in enumerate(questions)
+        ]
+        deck_questions.extend(next_questions)
+        running_index = len(deck_questions)
+        end = running_index - 1
+        has_questions = len(questions) > 0
+        files.append(
+            {
+                "deckId": source.id,
+                "fileName": source.file_name,
+                "isEmpty": not has_questions,
+                "questionCount": int(source.question_count or 0),
+                "range": {"start": start, "end": end} if has_questions else {"start": 0, "end": 0},
+            }
         )
 
     payload = {
         "bankQuestions": bank_formatted,
         "deckQuestions": deck_questions,
-        "files": [
-            {
-                "fileName": source.file_name,
-                "isEmpty": source.question_count == 0,
-                "questionCount": source.question_count,
-                "range": {"start": 0, "end": max(source.question_count - 1, 0)},
-            }
-            for source in sources
-        ],
+        "files": files,
         "hocTheoDeLayout": "markdownFiles",
     }
     cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
@@ -374,8 +382,8 @@ def get_subject_bank(db: Session, slug: str) -> list[dict]:
         cache_service.set_json(cache_key, [], _CACHE_SUBJECT_READ_TTL_SECONDS)
         return []
     source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
-    questions = crud_question_source.list_source_questions(db, source.id)
-    payload = [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    questions = crud_question_source.list_source_questions_payload(db, source.id)
+    payload = [{"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(questions, start=1)]
     cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
     return payload
 
@@ -466,8 +474,8 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
     source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
     if source is None:
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
-    questions = crud_question_source.list_source_questions(db, source.id)
-    payload = [{"id": idx, "stem": item.stem, "options": item.options_json or [], "answer": item.answer_text} for idx, item in enumerate(questions, start=1)]
+    questions = crud_question_source.list_source_questions_payload(db, source.id)
+    payload = [{"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(questions, start=1)]
     cache_service.set_json(cache_key, payload, _CACHE_DECK_QUESTIONS_TTL_SECONDS)
     return payload
 
