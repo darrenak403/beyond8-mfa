@@ -30,7 +30,7 @@ def _install_overrides() -> None:
     def _mock_get_db():
         yield Mock()
 
-    app.dependency_overrides[deps.get_current_user] = lambda: _FakeUser()
+    app.dependency_overrides[deps.require_course_access] = lambda: _FakeUser()
     app.dependency_overrides[get_db] = _mock_get_db
 
 

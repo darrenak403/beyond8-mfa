@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, Path, UploadFile
 from fastapi import Form
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_admin, get_current_user
+from app.core.deps import get_current_admin, require_course_access
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
@@ -89,7 +89,7 @@ def legacy_upload_source_markdown(
 
 
 @user_router.get("/subjects", response_model=ApiResponse[list[SubjectSummary]])
-def list_subjects(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_subjects(db: Session = Depends(get_db), _: User = Depends(require_course_access)):
     data = service_list_subjects(db)
     return success_response(data=data)
 
@@ -107,25 +107,25 @@ def admin_subject_sources(slug: str, db: Session = Depends(get_db), _: User = De
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])
-def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
     data = get_source_state(db, slug)
     return success_response(data=data)
 
 
 @user_router.get("/subjects/{slug}/bank", response_model=ApiResponse[list[SourceStateQuestion]])
-def subject_bank(slug: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def subject_bank(slug: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
     data = get_subject_bank(db, slug)
     return success_response(data=data)
 
 
 @user_router.get("/subjects/{slug}/decks", response_model=ApiResponse[list[SubjectDeck]])
-def subject_decks(slug: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def subject_decks(slug: str, db: Session = Depends(get_db), current_user: User = Depends(require_course_access)):
     data = get_subject_decks(db, slug, user_id=current_user.id)
     return success_response(data=data)
 
 
 @user_router.get("/subjects/{slug}/decks/{deck_id}/questions", response_model=ApiResponse[list[SourceStateQuestion]])
-def subject_deck_questions(slug: str, deck_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def subject_deck_questions(slug: str, deck_id: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
     data = get_deck_questions(db, slug, deck_id)
     return success_response(data=data)
 
@@ -140,7 +140,7 @@ def subject_deck_question_check(
     question_id: int = Path(ge=1),
     payload: AnswerCheckRequest = ...,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_course_access),
 ):
     data = check_deck_answer(
         db,
@@ -158,7 +158,7 @@ def subject_deck_progress_update(
     deck_id: str,
     payload: DeckProgressUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_course_access),
 ):
     data = update_deck_progress(
         db,
@@ -176,7 +176,7 @@ def subject_deck_progress_get(
     slug: str,
     deck_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_course_access),
 ):
     data = get_deck_progress(
         db,
@@ -193,7 +193,7 @@ def subject_deck_stats_update(
     deck_id: str,
     payload: DeckStatsUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_course_access),
 ):
     data = update_deck_stats(
         db,
