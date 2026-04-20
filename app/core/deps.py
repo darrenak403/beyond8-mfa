@@ -10,7 +10,7 @@ from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
 _AUTH_TOKEN_COOKIE_CANDIDATES = ("AUTH_TOKEN_COOKIE", "auth_token")
-_COURSE_ACCESS_COOKIE_CANDIDATES = ("beyond-access-course",)
+_COURSE_ACCESS_COOKIE_CANDIDATES = ("beyond8_course_access",)
 
 
 def _extract_bearer_token(
