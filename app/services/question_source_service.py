@@ -856,6 +856,85 @@ def update_source_from_markdown(
     }
 
 
+def upsert_source_from_markdown_by_slug(
+    db: Session,
+    *,
+    slug: str,
+    file: UploadFile,
+    uploader_id: str | None,
+) -> dict:
+    """
+    Simple admin flow: upload `.md` with explicit subject slug.
+
+    Behavior:
+    - Subject slug is the source-of-truth; if subject does not exist, create it.
+    - New upload creates a new source row under that subject.
+    - Exact duplicate (same examCode + checksum) returns existing source with deduplicated=True.
+    - For mistaken upload, admin should hard-delete source, then upload again.
+    """
+    normalized_slug = slug.strip().lower()
+    if not normalized_slug:
+        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_SUBJECT_SLUG", "Subject slug is required.")
+    subject = crud_question_source.get_or_create_subject(
+        db, slug=normalized_slug, code=_subject_code_from_slug(normalized_slug)
+    )
+
+    if not file.filename or not file.filename.lower().endswith(".md"):
+        raise _error(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "INVALID_FILE_TYPE", "Only .md files are accepted.")
+
+    raw_bytes = file.file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(raw_bytes) > _MAX_UPLOAD_BYTES:
+        raise _error(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", "File exceeds 5MB limit.")
+
+    metadata = detect_subject_and_exam_with_fallback(file.filename, normalized_slug)
+
+    checksum = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
+    same_checksum = crud_question_source.get_source_by_checksum(
+        db, subject_id=subject.id, exam_code=metadata["examCode"], checksum_sha256=checksum
+    )
+    if same_checksum is not None:
+        return {
+            "sourceId": same_checksum.id,
+            "subjectSlug": subject.slug,
+            "subjectCode": subject.code,
+            "examCode": same_checksum.exam_code,
+            "fileName": same_checksum.file_name,
+            "checksum": same_checksum.checksum_sha256,
+            "questionCount": int(same_checksum.question_count or 0),
+            "warnings": same_checksum.parse_warnings or [],
+            "deduplicated": True,
+        }
+
+    markdown_text = raw_bytes.decode("utf-8", errors="ignore")
+    parsed_questions, parse_warnings = parse_questions(markdown_text)
+    source = crud_question_source.create_source(
+        db,
+        subject_id=subject.id,
+        exam_code=metadata["examCode"],
+        file_name=file.filename,
+        checksum_sha256=checksum,
+        uploaded_by=uploader_id,
+        warnings=parse_warnings,
+        question_count=len(parsed_questions),
+    )
+
+    crud_question_source.replace_source_questions(db, source_id=source.id, payload=parsed_questions)
+    db.flush()
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
+    return {
+        "sourceId": source.id,
+        "subjectSlug": subject.slug,
+        "subjectCode": subject.code,
+        "examCode": source.exam_code,
+        "fileName": source.file_name,
+        "checksum": source.checksum_sha256,
+        "questionCount": source.question_count,
+        "warnings": parse_warnings,
+        "deduplicated": False,
+    }
+
+
 def delete_source(db: Session, *, slug: str, source_id: str) -> dict:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:

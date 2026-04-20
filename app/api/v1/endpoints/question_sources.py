@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, require_course_access
@@ -13,7 +13,6 @@ from app.schemas.question_source import (
     DeckProgressUpdateRequest,
     DeckProgressResponse,
     DeckStatsUpdateRequest,
-    SourceQuestionBulkUpdateRequest,
     SourceStateQuestion,
     SourceStateResponse,
     UploadSourceResponse,
@@ -28,64 +27,16 @@ from app.services import (
     get_source_state,
     get_subject_bank,
     get_subject_decks,
-    ingest_markdown_file,
     list_subjects as service_list_subjects,
     update_deck_progress,
     get_deck_progress,
     update_deck_stats,
-    update_source_from_markdown,
-    update_source_questions,
+    upsert_source_from_markdown_by_slug,
 )
 
 user_router = APIRouter(prefix="/v1", tags=["Question Sources"])
 admin_router = APIRouter(prefix="/v1", tags=["Admin — Question Sources"])
 router = APIRouter()
-
-
-def _upload_source_markdown_impl(
-    *,
-    db: Session,
-    file: UploadFile,
-    current_admin: User,
-    subject_slug: str | None,
-) -> ApiResponse[UploadSourceResponse]:
-    data = ingest_markdown_file(db, file, current_admin.id, subject_slug=subject_slug)
-    return success_response(data=data, message="Upload and parse markdown succeeded")
-
-
-@admin_router.post("/admin/question-sources/upload", response_model=ApiResponse[UploadSourceResponse])
-def admin_upload_source_markdown(
-    file: UploadFile = File(...),
-    subject_slug: str | None = Form(default=None, alias="subjectSlug"),
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
-):
-    return _upload_source_markdown_impl(
-        db=db,
-        file=file,
-        current_admin=current_admin,
-        subject_slug=subject_slug,
-    )
-
-
-@admin_router.post(
-    "/question-sources/upload",
-    response_model=ApiResponse[UploadSourceResponse],
-    include_in_schema=False,
-    deprecated=True,
-)
-def legacy_upload_source_markdown(
-    file: UploadFile = File(...),
-    subject_slug: str | None = Form(default=None, alias="subjectSlug"),
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
-):
-    return _upload_source_markdown_impl(
-        db=db,
-        file=file,
-        current_admin=current_admin,
-        subject_slug=subject_slug,
-    )
 
 
 @user_router.get(
@@ -284,101 +235,24 @@ def subject_deck_stats_update(
     return success_response(data=data, message="Deck stats updated successfully")
 
 
-@admin_router.put(
-    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions",
-    response_model=ApiResponse[dict],
-)
-def admin_update_questions_by_source(
-    slug: str,
-    source_id: str,
-    payload: SourceQuestionBulkUpdateRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
-):
-    return _update_questions_by_source_impl(
-        db=db,
-        slug=slug,
-        source_id=source_id,
-        payload=payload,
-    )
-
-
-def _update_questions_by_source_impl(
-    *,
-    db: Session,
-    slug: str,
-    source_id: str,
-    payload: SourceQuestionBulkUpdateRequest,
-) -> ApiResponse[dict]:
-    data = update_source_questions(
-        db,
-        slug=slug,
-        source_id=source_id,
-        questions=[item.model_dump() for item in payload.questions],
-    )
-    return success_response(data=data, message="Source questions updated successfully")
-
-
-@admin_router.put(
-    "/subjects/{slug}/sources/{source_id}/questions",
-    response_model=ApiResponse[dict],
-    include_in_schema=False,
-    deprecated=True,
-)
-def legacy_update_questions_by_source(
-    slug: str,
-    source_id: str,
-    payload: SourceQuestionBulkUpdateRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
-):
-    return _update_questions_by_source_impl(db=db, slug=slug, source_id=source_id, payload=payload)
-
-
-@admin_router.put(
-    "/admin/question-sources/subjects/{slug}/sources/{source_id}/upload",
+@admin_router.post(
+    "/admin/question-sources/subjects/{slug}/upload",
     response_model=ApiResponse[UploadSourceResponse],
+    summary="Simple upsert source by slug + markdown file",
 )
-def admin_update_source_by_markdown_upload(
+def admin_upsert_source_by_slug_upload(
     slug: str,
-    source_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ):
-    return _update_source_by_markdown_upload_impl(db=db, slug=slug, source_id=source_id, file=file)
-
-
-def _update_source_by_markdown_upload_impl(
-    *,
-    db: Session,
-    slug: str,
-    source_id: str,
-    file: UploadFile,
-) -> ApiResponse[UploadSourceResponse]:
-    data = update_source_from_markdown(
+    data = upsert_source_from_markdown_by_slug(
         db,
         slug=slug,
-        source_id=source_id,
         file=file,
+        uploader_id=current_admin.id,
     )
-    return success_response(data=data, message="Source markdown updated successfully")
-
-
-@admin_router.put(
-    "/subjects/{slug}/sources/{source_id}/upload",
-    response_model=ApiResponse[UploadSourceResponse],
-    include_in_schema=False,
-    deprecated=True,
-)
-def legacy_update_source_by_markdown_upload(
-    slug: str,
-    source_id: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
-):
-    return _update_source_by_markdown_upload_impl(db=db, slug=slug, source_id=source_id, file=file)
+    return success_response(data=data, message="Source upserted by slug upload successfully")
 
 
 @admin_router.delete("/admin/question-sources/subjects/{slug}/sources/{source_id}", response_model=ApiResponse[dict])
@@ -394,21 +268,6 @@ def admin_delete_source_endpoint(
 def _delete_source_impl(*, db: Session, slug: str, source_id: str) -> ApiResponse[dict]:
     data = delete_source(db, slug=slug, source_id=source_id)
     return success_response(data=data, message="Source deleted permanently")
-
-
-@admin_router.delete(
-    "/subjects/{slug}/sources/{source_id}",
-    response_model=ApiResponse[dict],
-    include_in_schema=False,
-    deprecated=True,
-)
-def legacy_delete_source_endpoint(
-    slug: str,
-    source_id: str,
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
-):
-    return _delete_source_impl(db=db, slug=slug, source_id=source_id)
 
 
 router.include_router(user_router)

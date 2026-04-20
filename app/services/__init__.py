@@ -18,6 +18,7 @@ from app.services.question_source_service import (
     parse_questions,
     update_deck_progress,
     update_deck_stats,
+    upsert_source_from_markdown_by_slug,
     update_source_questions,
     update_source_from_markdown,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "parse_questions",
     "update_deck_progress",
     "update_deck_stats",
+    "upsert_source_from_markdown_by_slug",
     "update_source_questions",
     "update_source_from_markdown",
 ]
