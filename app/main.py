@@ -95,7 +95,7 @@ async def http_exception_handler(_: Request, exc: HTTPException):
         response = JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
     auth_clear_details = {"Could not validate credentials", "Tài khoản đã bị khóa"}
-    should_clear_auth_cookie = exc.status_code == 401 or (exc.status_code == 403 and exc.detail in auth_clear_details)
+    should_clear_auth_cookie = (exc.status_code in {401, 403}) and isinstance(exc.detail, str) and exc.detail in auth_clear_details
     if should_clear_auth_cookie:
         response.delete_cookie("auth_token", path="/")
         response.delete_cookie("refresh_token", path="/")
