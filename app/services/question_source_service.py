@@ -390,6 +390,57 @@ def get_subject_bank(db: Session, slug: str) -> list[dict]:
     return payload
 
 
+def get_subject_bank_progress(db: Session, *, slug: str, user_id: str) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+
+    sources = crud_question_source.list_sources_by_subject(db, subject.id)
+    if not sources:
+        return {
+            "totalQuestions": 0,
+            "lastQuestion": 0,
+            "resumeQuestion": 0,
+            "attemptedQuestionOrdinals": [],
+            "completionRatePercent": 0,
+            "updatedAt": None,
+        }
+
+    source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
+    total_questions = int(source.question_count or 0)
+    stats = crud_question_source.list_user_stats_by_source_ids(
+        db, user_id=user_id, source_ids=[source.id]
+    ).get(source.id, {})
+
+    raw_current_question = min(
+        max(int(stats.get("current_question_ordinal", stats.get("in_progress_count", 0))), 0),
+        total_questions,
+    )
+    attempted_question_ordinals = _normalize_attempted_ordinals(
+        stats.get("attempted_question_ordinals", []),
+        question_count=total_questions,
+    )
+    resume_question = _resolve_resume_question_ordinal(
+        current_question_ordinal=raw_current_question,
+        attempted_question_ordinals=attempted_question_ordinals,
+        question_count=total_questions,
+    )
+
+    completion_rate_percent = 0
+    if total_questions > 0:
+        completion_rate_percent = int(round((len(attempted_question_ordinals) / total_questions) * 100))
+
+    updated_at = stats.get("updated_at")
+    return {
+        "totalQuestions": total_questions,
+        "lastQuestion": raw_current_question,
+        "resumeQuestion": resume_question,
+        "attemptedQuestionOrdinals": attempted_question_ordinals,
+        "completionRatePercent": max(0, min(completion_rate_percent, 100)),
+        "updatedAt": updated_at.isoformat() if updated_at else None,
+    }
+
+
 def _build_deck_stats(
     total_questions: int,
     current_question_ordinal: int,

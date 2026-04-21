@@ -127,6 +127,18 @@ def test_get_bank_paginated(monkeypatch):
             {"id": 2, "stem": "B", "options": [], "answer": "B"},
         ],
     )
+    monkeypatch.setattr(
+        qs,
+        "get_subject_bank_progress",
+        lambda _db, slug, user_id: {
+            "totalQuestions": 2,
+            "lastQuestion": 2,
+            "resumeQuestion": 2,
+            "attemptedQuestionOrdinals": [1],
+            "completionRatePercent": 50,
+            "updatedAt": "2026-04-21T02:00:00+00:00",
+        },
+    )
     response = _run("GET", "/api/v1/subjects/pmg201c/bank?page=1&limit=1")
     assert response.status_code == 200
     data = response.json()["data"]
@@ -135,6 +147,7 @@ def test_get_bank_paginated(monkeypatch):
     assert data["items"][0]["stem"] == "A"
     assert data["total"] == 2
     assert data["hasNext"] is True
+    assert data["progress"]["resumeQuestion"] == 2
 
 
 def test_get_deck_questions_ok(monkeypatch):

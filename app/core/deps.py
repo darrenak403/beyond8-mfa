@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,12 @@ from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 
-bearer_scheme = HTTPBearer(auto_error=False)
+auth_bearer_scheme = HTTPBearer(auto_error=False, scheme_name="auth-token")
+course_access_header_scheme = APIKeyHeader(
+    name="x-course-access-token",
+    auto_error=False,
+    scheme_name="beyond8-course-access",
+)
 _AUTH_TOKEN_COOKIE_CANDIDATES = ("AUTH_TOKEN_COOKIE", "auth_token")
 _COURSE_ACCESS_COOKIE_CANDIDATES = ("beyond8_course_access",)
 
@@ -42,7 +47,7 @@ def _extract_cookie_or_bearer_token(
 
 def _extract_course_access_token(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None,
+    header_token: str | None,
     *,
     detail: str,
 ) -> str:
@@ -50,17 +55,24 @@ def _extract_course_access_token(
         cookie_token = request.cookies.get(cookie_name)
         if cookie_token:
             return cookie_token
-    # Optional explicit header for clients that cannot send the cookie.
-    course_header_token = request.headers.get("x-course-access-token")
-    if course_header_token:
-        return course_header_token
-    return _extract_bearer_token(credentials, detail=detail)
+    if header_token:
+        return header_token
+    # Backward-compatible fallback for clients still sending course token as Bearer.
+    authorization = request.headers.get("authorization")
+    if authorization and authorization.lower().startswith("bearer "):
+        maybe_token = authorization[7:].strip()
+        if maybe_token:
+            return maybe_token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+    )
 
 
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(auth_bearer_scheme),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,7 +117,7 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
 def get_current_course_user(
     request: Request,
     db: Session = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    course_access_token: str | None = Depends(course_access_header_scheme),
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -113,7 +125,7 @@ def get_current_course_user(
     )
     token = _extract_course_access_token(
         request,
-        credentials,
+        course_access_token,
         detail=credentials_exception.detail,
     )
     try:

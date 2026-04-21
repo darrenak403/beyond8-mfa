@@ -26,6 +26,7 @@ from app.services import (
     get_deck_questions_page,
     get_source_state,
     get_subject_bank,
+    get_subject_bank_progress,
     get_subject_decks,
     list_subjects as service_list_subjects,
     update_deck_progress,
@@ -105,7 +106,7 @@ def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(req
 def subject_bank(
     slug: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_course_access),
+    current_user: User = Depends(require_course_access),
     page: int | None = Query(default=None, ge=1),
     limit: int | None = Query(default=None, ge=1, le=MAX_PAGE_SIZE),
 ):
@@ -113,7 +114,9 @@ def subject_bank(
     if page is None:
         return success_response(data=data)
     eff_limit = DEFAULT_PAGE_SIZE if limit is None else limit
-    return success_response(data=paginate_slice(data, page=page, limit=eff_limit))
+    paginated = paginate_slice(data, page=page, limit=eff_limit)
+    progress = get_subject_bank_progress(db, slug=slug, user_id=current_user.id)
+    return success_response(data={**paginated, "progress": progress})
 
 
 @user_router.get(

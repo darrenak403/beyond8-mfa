@@ -69,6 +69,6 @@ def test_get_current_course_user_accepts_course_header_token(monkeypatch) -> Non
     )
     monkeypatch.setattr(deps.crud_user, "get_by_id", lambda _db, _id: fake_user)
 
-    request = SimpleNamespace(cookies={}, headers={"x-course-access-token": "course-token"})
-    user = deps.get_current_course_user(request=request, db=fake_db, credentials=None)
+    request = SimpleNamespace(cookies={}, headers={})
+    user = deps.get_current_course_user(request=request, db=fake_db, course_access_token="course-token")
     assert user.id == "user-1"
