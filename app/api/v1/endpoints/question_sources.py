@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_admin, require_course_access
+from app.core.deps import get_current_admin, get_current_user, require_course_access
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
@@ -48,7 +48,7 @@ router = APIRouter()
 )
 def list_subjects(
     db: Session = Depends(get_db),
-    _: User = Depends(require_course_access),
+    _: User = Depends(get_current_user),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
