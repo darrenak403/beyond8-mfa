@@ -419,6 +419,38 @@ def _normalize_attempted_ordinals(raw_ordinals: object, *, question_count: int) 
     return normalized
 
 
+def _resolve_resume_question_ordinal(
+    *,
+    current_question_ordinal: int,
+    attempted_question_ordinals: list[int],
+    question_count: int,
+) -> int:
+    """Return the next question ordinal that the user should resume at."""
+    if question_count <= 0:
+        return 0
+
+    clamped_current = min(max(int(current_question_ordinal or 0), 0), question_count)
+    attempted_set = set(attempted_question_ordinals)
+
+    # If current question is still unanswered, keep it.
+    if 1 <= clamped_current <= question_count and clamped_current not in attempted_set:
+        return clamped_current
+
+    # Otherwise move forward to the next unanswered question.
+    start = clamped_current + 1 if clamped_current >= 1 else 1
+    for ordinal in range(start, question_count + 1):
+        if ordinal not in attempted_set:
+            return ordinal
+
+    # Fallback: first unanswered question anywhere in deck.
+    for ordinal in range(1, question_count + 1):
+        if ordinal not in attempted_set:
+            return ordinal
+
+    # Fully attempted/completed deck.
+    return question_count
+
+
 def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> list[dict]:
     normalized_slug = slug.lower()
     if user_id:
@@ -445,8 +477,17 @@ def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> 
     for source in deck_sources:
         total_questions = int(source.question_count or 0)
         user_stats = stats_by_source_id.get(source.id, {})
-        current_question_ordinal = int(
+        raw_current_question_ordinal = int(
             user_stats.get("current_question_ordinal", user_stats.get("in_progress_count", 0))
+        )
+        attempted_question_ordinals = _normalize_attempted_ordinals(
+            user_stats.get("attempted_question_ordinals", []),
+            question_count=total_questions,
+        )
+        current_question_ordinal = _resolve_resume_question_ordinal(
+            current_question_ordinal=raw_current_question_ordinal,
+            attempted_question_ordinals=attempted_question_ordinals,
+            question_count=total_questions,
         )
         completed_attempts = int(user_stats.get("completed_attempts", user_stats.get("completed_count", 0)))
         result.append(
@@ -630,6 +671,11 @@ def update_deck_progress(
     completion_rate_percent = 0
     if total_questions > 0:
         completion_rate_percent = int(round((clamped_current_question / total_questions) * 100))
+    resume_question = _resolve_resume_question_ordinal(
+        current_question_ordinal=clamped_current_question,
+        attempted_question_ordinals=normalized_attempted_ordinals,
+        question_count=total_questions,
+    )
 
     crud_question_source.upsert_source_user_stats(
         db,
@@ -648,7 +694,7 @@ def update_deck_progress(
         "deckId": source.id,
         "subjectSlug": subject.slug,
         "stats": _build_deck_stats(total_questions, clamped_current_question, completed_attempts),
-        "currentQuestion": clamped_current_question,
+        "currentQuestion": resume_question,
         "attemptedQuestionOrdinals": normalized_attempted_ordinals,
     }
 
@@ -678,12 +724,17 @@ def get_deck_progress(
             "updatedAt": None,
         }
 
-    current_question = min(
+    raw_current_question = min(
         max(int(current_stats.get("current_question_ordinal", 0)), 0),
         total_questions,
     )
     attempted_question_ordinals = _normalize_attempted_ordinals(
         current_stats.get("attempted_question_ordinals", []),
+        question_count=total_questions,
+    )
+    current_question = _resolve_resume_question_ordinal(
+        current_question_ordinal=raw_current_question,
+        attempted_question_ordinals=attempted_question_ordinals,
         question_count=total_questions,
     )
     updated_at = current_stats.get("updated_at")

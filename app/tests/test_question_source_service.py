@@ -219,7 +219,7 @@ def test_get_deck_progress_filters_invalid_ordinals(monkeypatch) -> None:
         deck_id="src-deck",
         user_id="user-1",
     )
-    assert result["currentQuestion"] == 5
+    assert result["currentQuestion"] == 1
     assert result["attemptedQuestionOrdinals"] == [3, 5]
     assert result["updatedAt"] == "2026-04-20T03:10:00+00:00"
 
