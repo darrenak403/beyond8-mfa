@@ -14,7 +14,7 @@ course_access_header_scheme = APIKeyHeader(
     auto_error=False,
     scheme_name="beyond8-course-access",
 )
-_AUTH_TOKEN_COOKIE_CANDIDATES = ("AUTH_TOKEN_COOKIE", "auth_token")
+_AUTH_TOKEN_COOKIE_CANDIDATES = ("auth_token",)
 _COURSE_ACCESS_COOKIE_CANDIDATES = ("beyond8_course_access",)
 
 
@@ -38,6 +38,12 @@ def _extract_cookie_or_bearer_token(
     cookie_names: tuple[str, ...],
     detail: str,
 ) -> str:
+    # Prefer explicit Bearer header first.
+    # This avoids stale/invalid auth cookie shadowing a valid Authorization header
+    # when clients call cross-origin session-status right after login.
+    if credentials is not None and credentials.scheme.lower() == "bearer" and credentials.credentials:
+        return credentials.credentials
+
     for cookie_name in cookie_names:
         cookie_token = request.cookies.get(cookie_name)
         if cookie_token:
