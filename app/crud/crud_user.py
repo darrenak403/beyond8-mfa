@@ -180,5 +180,23 @@ class CRUDUser:
         db.flush()
         return user
 
+    def hard_delete(self, db: Session, user_id: str) -> bool:
+        user = self.get_by_id(db, user_id)
+        if user is None:
+            return False
+
+        db.execute(
+            text("DELETE FROM otp_verifications WHERE user_id = :uid"),
+            {"uid": user_id},
+        )
+        db.execute(
+            text("UPDATE users SET blocked_by_user_id = NULL WHERE blocked_by_user_id = :uid"),
+            {"uid": user_id},
+        )
+
+        db.delete(user)
+        db.flush()
+        return True
+
 
 crud_user = CRUDUser()

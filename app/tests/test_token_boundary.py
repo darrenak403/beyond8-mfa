@@ -36,7 +36,7 @@ def test_get_current_user_accepts_auth_token_cookie(monkeypatch) -> None:
     monkeypatch.setattr(deps.crud_user, "get_by_id", lambda _db, _id: fake_user)
 
     credentials = None
-    request = SimpleNamespace(cookies={"AUTH_TOKEN_COOKIE": "auth-token"}, headers={})
+    request = SimpleNamespace(cookies={"auth_token": "auth-token"}, headers={})
 
     user = deps.get_current_user(request=request, db=fake_db, credentials=credentials)
     assert user.id == "user-1"

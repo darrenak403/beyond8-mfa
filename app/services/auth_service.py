@@ -137,5 +137,26 @@ class AuthService:
             ) from exc
         return updated
 
+    def delete_user(
+        self,
+        db: Session,
+        *,
+        user_id: str,
+        admin_user_id: str,
+    ) -> None:
+        user = crud_user.get_by_id(db, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
+        if user.role_name == "admin":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể xóa tài khoản admin")
+
+        if user.id == admin_user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Không thể tự xóa chính mình")
+
+        deleted = crud_user.hard_delete(db, user_id)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
+
 
 auth_service = AuthService()

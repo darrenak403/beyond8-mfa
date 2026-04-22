@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin
@@ -143,6 +143,22 @@ def unblock_user_dashboard(
 ):
     updated_user = auth_service.unblock_user(db, user_id=user_id)
     return success_response(data=_to_user_item_response(updated_user), message="Đã mở khóa người dùng")
+
+
+@router.delete("/users/{user_id}", response_model=ApiResponse[None])
+def delete_user_dashboard(
+    user_id: str,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+    x_confirm_delete: str | None = Header(default=None, alias="X-Confirm-Delete"),
+):
+    if (x_confirm_delete or "").strip().lower() != "permanent":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Thiếu hoặc sai header X-Confirm-Delete: gửi giá trị 'permanent' để xác nhận xóa vĩnh viễn.",
+        )
+    auth_service.delete_user(db, user_id=user_id, admin_user_id=admin_user.id)
+    return success_response(data=None, message="Đã xóa người dùng vĩnh viễn")
 
 
 @router.patch("/users/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
