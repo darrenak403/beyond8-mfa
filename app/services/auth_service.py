@@ -22,7 +22,7 @@ class AuthService:
 
         return True
 
-    def signin(self, db: Session, email: str) -> tuple[str, User]:
+    def signin(self, db: Session, email: str) -> tuple[str, User, str]:
         normalized_email = email.lower().strip()
 
         if normalized_email == settings.seed_admin_email.lower().strip():
@@ -47,7 +47,7 @@ class AuthService:
             email=user.email,
             session_id=next_session_id,
         )
-        return token, user
+        return token, user, next_session_id
 
     def get_all_users(
         self,

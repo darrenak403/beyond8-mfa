@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.schemas.auth import SessionStatusResponse, SignInRequest, TokenResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/signup", response_model=ApiResponse[bool])
@@ -22,7 +24,7 @@ def signup(payload: SignInRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=ApiResponse[TokenResponse])
 def login_alias(payload: SignInRequest, db: Session = Depends(get_db)):
-    token, user = auth_service.signin(db, payload.email)
+    token, user, session_id = auth_service.signin(db, payload.email)
     expires_at = user.course_access_period_expires_at
     has_active_course_access = bool(
         user.course_access_active
@@ -38,11 +40,19 @@ def login_alias(payload: SignInRequest, db: Session = Depends(get_db)):
             email=user.email,
             course_access_version=user.course_access_version,
             expires_at=expires_at,
-            session_id=user.active_session_id,
+            session_id=session_id,
         )
         if has_active_course_access
         else None
     )
+    if course_access_token is None:
+        logger.info(
+            "login_without_course_token user_id=%s active=%s expires_at=%s now_utc=%s",
+            user.id,
+            user.course_access_active,
+            expires_at.isoformat() if expires_at is not None else None,
+            datetime.now(timezone.utc).isoformat(),
+        )
     response_data = TokenResponse(
         access_token=token,
         course_access_token=course_access_token,
