@@ -27,11 +27,11 @@ def test_get_current_user_rejects_course_access_token(monkeypatch) -> None:
 
 def test_get_current_user_accepts_auth_token_cookie(monkeypatch) -> None:
     fake_db = Mock()
-    fake_user = SimpleNamespace(id="user-1", is_active=True)
+    fake_user = SimpleNamespace(id="user-1", is_active=True, active_session_id="session-1")
     monkeypatch.setattr(
         deps,
         "decode_access_token",
-        lambda _token: {"sub": "user-1", "role": "user", "email": "a@example.com"},
+        lambda _token: {"sub": "user-1", "role": "user", "email": "a@example.com", "sid": "session-1"},
     )
     monkeypatch.setattr(deps.crud_user, "get_by_id", lambda _db, _id: fake_user)
 

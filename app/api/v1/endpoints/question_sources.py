@@ -18,26 +18,28 @@ from app.schemas.question_source import (
     UploadSourceResponse,
 )
 from app.utils.pagination import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_slice
-from app.services import (
-    check_deck_answer,
-    delete_source,
-    get_admin_subject_sources,
-    get_deck_questions,
-    get_deck_questions_page,
-    get_source_state,
-    get_subject_bank,
-    get_subject_bank_progress,
-    get_subject_decks,
-    list_subjects as service_list_subjects,
-    update_deck_progress,
-    get_deck_progress,
-    update_deck_stats,
-    upsert_source_from_markdown_by_slug,
-)
+from app.services.question_source_facade import question_source_service
 
-user_router = APIRouter(prefix="/v1", tags=["Question Sources"])
-admin_router = APIRouter(prefix="/v1", tags=["Admin — Question Sources"])
+user_router = APIRouter(tags=["Question Sources"])
+admin_router = APIRouter(tags=["Admin — Question Sources"])
 router = APIRouter()
+
+# Backward-compatible aliases for existing contract tests that monkeypatch
+# endpoint-level symbols directly.
+service_list_subjects = question_source_service.list_subjects
+get_admin_subject_sources = question_source_service.get_admin_subject_sources
+get_source_state = question_source_service.get_source_state
+get_subject_bank = question_source_service.get_subject_bank
+get_subject_bank_progress = question_source_service.get_subject_bank_progress
+get_subject_decks = question_source_service.get_subject_decks
+get_deck_questions = question_source_service.get_deck_questions
+get_deck_questions_page = question_source_service.get_deck_questions_page
+check_deck_answer = question_source_service.check_deck_answer
+update_deck_progress = question_source_service.update_deck_progress
+get_deck_progress = question_source_service.get_deck_progress
+update_deck_stats = question_source_service.update_deck_stats
+upsert_source_from_markdown_by_slug = question_source_service.upsert_source_from_markdown_by_slug
+delete_source = question_source_service.delete_source
 
 
 @user_router.get(

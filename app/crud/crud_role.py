@@ -13,7 +13,7 @@ class CRUDRole:
         for role_name in ("admin", "user"):
             if self.get_by_name(db, role_name) is None:
                 db.add(Role(name=role_name))
-        db.commit()
+        db.flush()
 
 
 crud_role = CRUDRole()

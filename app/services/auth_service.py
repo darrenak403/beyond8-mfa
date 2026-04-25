@@ -64,6 +64,12 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng")
         return user
 
+    def get_user_by_email(self, db: Session, *, email: str) -> User:
+        user = crud_user.get_by_email(db, email)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng theo email")
+        return user
+
     def block_user(
         self,
         db: Session,

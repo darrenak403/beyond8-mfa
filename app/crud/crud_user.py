@@ -90,18 +90,18 @@ class CRUDUser:
             if user.role_id != role.id:
                 user.role_id = role.id
                 db.add(user)
-                db.commit()
+                db.flush()
                 db.refresh(user)
             return user
 
         user = User(email=email.lower(), role_id=role.id)
-        db.add(user)
         try:
-            db.commit()
+            with db.begin_nested():
+                db.add(user)
+                db.flush()
             db.refresh(user)
             return user
         except IntegrityError:
-            db.rollback()
             existing = self.get_by_email(db, email)
             if existing is None:
                 raise

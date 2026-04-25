@@ -24,7 +24,7 @@ class OTPService:
             otp_rotate_count=rotate_count,
         )
         crud_otp.save_last_generated_otp(db, user_id=target_user_id, otp_value=otp_raw)
-        db.commit()
+        db.flush()
         return otp_raw, None, rotate_count
 
     # ------------------------------------------------------------------

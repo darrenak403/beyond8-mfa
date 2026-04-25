@@ -12,11 +12,13 @@ Load only the reference needed for the current task.
 These apply to **this** FastAPI service layout (`app/` with `api`, `services`, `crud`, `schemas`, `models`, `core`, `db`). Full matrices and rationale: [`references/architecture.md`](references/architecture.md). Public HTTP rules: [`references/api-design.md`](references/api-design.md) (contract stability).
 
 1. **Dependency direction** — `endpoints` → `services` → `crud` → `models`. Never import `endpoints` from `services` or `crud`. Never put heavy ORM/query loops in routers.
-2. **Thin HTTP layer** — Routers validate via Pydantic, call one service (or a single well-scoped crud helper), return schemas. No business rules in path operations.
+2. **Thin HTTP layer** — Routers validate via Pydantic, call service layer, return schemas. No business rules or direct CRUD access in path operations.
 3. **Stable public API** — Do not rename route paths, HTTP methods, query parameter names, or **documented** JSON response field names unless the task explicitly requires a breaking change **and** a version or migration plan for clients.
 4. **Persistence** — Schema changes go through **Alembic** migrations; do not hand-edit production DB without a migration. ORM models stay in `models/`; API shapes stay in `schemas/`.
 5. **Auth cross-cutting** — Reuse `core.deps` / shared dependencies for JWT and admin checks; do not duplicate verification logic across endpoints.
 6. **Refactors** — Readability-only cleanups must **not** change behavior, status codes, or externally visible payloads unless explicitly requested.
+7. **Transaction owner** — Request scope (`db.session.get_db`) owns commit/rollback. Service/CRUD should prefer `flush()` and avoid nested `commit()` unless explicitly required by task semantics.
+8. **Shared helpers** — Reusable response helpers live under `app/helpers/` (example: OTP stats/history helpers). Endpoints should import shared helpers from this package, not from sibling endpoint modules.
 
 ## Reference Map
 

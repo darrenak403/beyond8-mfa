@@ -14,6 +14,15 @@ Hệ thống được xây dựng bằng thiết kế **Stateless OTP với HMAC
 - **Auto-rotate:** Lưu lại `rotate_count` trong database (singleton table `otp_state`). Mỗi lần một tài khoản xác thực mã thành công, biến `rotate_count` tăng một đơn vị lập tức làm thay đổi khóa OTP hiện hành của toàn hệ thống, khiến OTP cũ bị tiêu hủy và trở nên vô nghĩa với những người dùng phía sau.
 - **Bảo mật tuyệt đối:** Audit log chỉ luu đúng bản ghi vào bảng `otp_verifications` **DUY NHẤT** khi một phiên kích hoạt thành công (dùng Unique ID trên time-window để chống race conditions / double spend).
 
+### 1.1 Quy ước kiến trúc code (refactor-safe)
+
+- Luồng chuẩn cho module: `endpoint -> service -> crud -> db/models`.
+- Endpoint chỉ làm routing, DI, map request/response; không gọi DB layer trực tiếp.
+- Service chứa business logic và orchestration, không nhúng SQL.
+- CRUD tập trung đọc/ghi dữ liệu; không chứa HTTP contract dành riêng endpoint.
+- Transaction owner mặc định là request scope (`get_db`), tránh commit phân tán trong nhiều tầng.
+- Module mới nên đi theo template: `api/v1/endpoints/<module>.py`, `services/<module>_service.py`, `crud/crud_<module>.py`, `schemas/<module>.py`, test service + API contract.
+
 ## 2. Các tham số Môi trường (.env)
 
 Tạo file `.env` ở thư mục gốc của repo (cùng cấp với `app/`):

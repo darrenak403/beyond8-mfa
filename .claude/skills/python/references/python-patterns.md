@@ -21,6 +21,7 @@ Language and structure patterns for maintainable services. Routing and security 
 - **Reusable dependencies** in `core/deps.py`: `get_db`, `get_current_user`, pagination params.
 - Dependencies that open resources should be **generator** functions with `yield` and teardown after `yield`.
 - Avoid calling `Depends` inside plain functions — only in route signatures or nested `Depends`.
+- Keep shared endpoint response builders in `app/helpers/` and import from there in routers.
 
 ## Async
 
@@ -32,6 +33,11 @@ Language and structure patterns for maintainable services. Routing and security 
 
 - Raise **`HTTPException`** in the HTTP layer only when mapping from domain/service errors.
 - In services, prefer **returning a result type** or raising **domain-specific exceptions** caught by an exception handler in `main.py` that maps to stable JSON error envelopes.
+
+## Transactions
+
+- With request-scoped DB dependencies, prefer `flush()` in services/CRUD and let `get_db` own commit/rollback.
+- If conflict handling is needed inside an outer transaction, use `begin_nested()` (savepoint) instead of rolling back the whole request transaction.
 
 ## Logging
 

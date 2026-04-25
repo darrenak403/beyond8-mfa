@@ -64,7 +64,7 @@ app/
 
 | Layer | May import from | Must not |
 |-------|-------------------|----------|
-| `endpoints` | `schemas`, `services`, `core.deps`, FastAPI | Heavy ORM logic inline |
+| `endpoints` | `schemas`, `services`, `core.deps`, `helpers`, FastAPI | Heavy ORM logic inline |
 | `services` | `crud`, `schemas`, `models` (read), other services | FastAPI `Request` types |
 | `crud` | `models`, `db.session` | HTTP concepts |
 | `schemas` | stdlib, pydantic | `models` (avoid circular ORM in DTOs) |
@@ -72,11 +72,16 @@ app/
 
 ## Responsibilities
 
-- **endpoints** — parse path/query/body, call one service or crud function, map to response schema, raise HTTPException with correct status.
-- **services** — business rules, transactions spanning multiple CRUD calls, call external APIs.
-- **crud** — `session.execute(select(...))`, `session.add`, filters, pagination primitives.
+- **endpoints** — parse path/query/body, call service layer, map to response schema, raise HTTPException with correct status.
+- **services** — business rules, orchestration across CRUD calls, call external APIs.
+- **crud** — `session.execute(select(...))`, `session.add`, `session.flush()`, filters, pagination primitives.
 - **schemas** — everything the client sees; version API models here, not on ORM entities.
 - **core/config** — `pydantic-settings` for env; single source of truth for constants.
+
+## Project notes (beyond8-mfa)
+
+- Shared endpoint helpers should live in `app/helpers/` (for example stats response helpers), not inside `api/v1/endpoints/`.
+- Default transaction ownership is request-scoped via `get_db`; avoid calling `commit()` in service/CRUD for normal request flows.
 
 ## Anti-patterns
 

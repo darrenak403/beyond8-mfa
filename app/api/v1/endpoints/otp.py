@@ -3,12 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, get_current_course_user, get_current_user
 from app.core.security import create_course_access_token
-from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.otp import CourseAccessStatusResponse, ExternalOTPVerifyRequest, OTPGenerateResponse, OTPVerifyResponse
-from app.services import otp_service
+from app.services import auth_service, otp_service
 
 router = APIRouter(prefix="/otp", tags=["OTP"])
 
@@ -23,10 +22,7 @@ def generate_otp(
     Generate OTP for one target user.
     Each user has an independent OTP sequence.
     """
-    target_user = crud_user.get_by_email(db, target_email)
-    if target_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy người dùng theo email")
-
+    target_user = auth_service.get_user_by_email(db, email=target_email)
     otp, expires_in, version = otp_service.generate_otp(db, target_user_id=target_user.id)
     response_data = OTPGenerateResponse(otp=otp, expires_in=expires_in, version=version, target_email=target_user.email)
     return success_response(data=response_data, message="Lấy OTP thành công")

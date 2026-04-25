@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.helpers.stats_helpers import build_otp_history_response, build_otp_stats_response
 from app.core.deps import get_current_admin
 from app.db.session import get_db
 from app.models.user import User
@@ -99,13 +100,7 @@ def get_user_by_id_dashboard(
 def otp_verification_stats_dashboard(
     _admin: User = Depends(get_current_admin), db: Session = Depends(get_db)
 ):
-    verified_users, total_key_purchases, total_success = stats_service.get_otp_verification_stats(db)
-    response_data = OTPStatsResponse(
-        verified_users=verified_users,
-        total_key_purchases=total_key_purchases,
-        total_successful_verifications=total_success,
-    )
-    return success_response(data=response_data, message="Lấy thống kê OTP thành công")
+    return build_otp_stats_response(db)
 
 
 @router.get("/otp-verifications/history", response_model=ApiResponse[OTPVerificationHistoryResponse])
@@ -114,9 +109,7 @@ def otp_verification_history_dashboard(
     db: Session = Depends(get_db),
     user_id: str | None = Query(default=None),
 ):
-    items = stats_service.get_otp_verification_history(db, user_id=user_id)
-    response_data = OTPVerificationHistoryResponse(total_users=len(items), items=items)
-    return success_response(data=response_data, message="Lấy lịch sử verify OTP thành công")
+    return build_otp_history_response(db, user_id=user_id)
 
 
 @router.patch("/users/{user_id}/block", response_model=ApiResponse[UserItemResponse])

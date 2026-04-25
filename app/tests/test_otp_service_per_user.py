@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.base import Base
 from app.models.otp_verification import OTPVerification
 from app.models.role import Role
 from app.models.user import User
@@ -10,7 +9,9 @@ from app.services.otp_service import otp_service
 
 def _create_session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+    Role.__table__.create(engine)
+    User.__table__.create(engine)
+    OTPVerification.__table__.create(engine)
     local_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     return local_session()
 

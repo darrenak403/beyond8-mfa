@@ -52,3 +52,4 @@ mypy app
 ## Environment-specific behavior
 
 - Use explicit `ENV=development|staging|production` to toggle docs exposure, seed data, and strict CORS.
+- Keep startup/bootstrap orchestration in a dedicated module (for example `app/bootstrap/`) and keep `main.py` focused on app wiring.

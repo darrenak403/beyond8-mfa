@@ -102,13 +102,16 @@ def test_get_subject_decks_excludes_aggregated_bank(monkeypatch) -> None:
     fake_crud = Mock()
     fake_crud.get_subject_by_slug.return_value = fake_subject
     fake_crud.list_sources_by_subject.return_value = [aggregated, deck]
+    fake_crud.list_user_stats_by_source_ids.return_value = {}
     monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service.cache_service, "get_json", lambda _key: None)
+    monkeypatch.setattr(question_source_service.cache_service, "set_json", lambda _key, _value, _ttl=None: None)
 
     decks = get_subject_decks(Mock(), "pmg201c")
     assert len(decks) == 1
     assert decks[0]["deckId"] == "src-deck"
     assert decks[0]["stats"]["total"] == 50
-    assert decks[0]["stats"]["inProgress"] == 0
+    assert decks[0]["stats"]["inProgress"] == 1
     assert decks[0]["stats"]["completed"] == 0
 
 

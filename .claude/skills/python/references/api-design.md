@@ -52,6 +52,7 @@ async def create_item(
 
 - Validation happens **before** the body hits the function (Pydantic).
 - Keep the function **one screen**; push logic to `service` / `crud`.
+- For shared response-building logic across endpoints, place helpers under `app/helpers/` and import from there.
 
 ## Pagination & filtering
 

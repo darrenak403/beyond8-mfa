@@ -13,8 +13,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.api import api_router
+from app.bootstrap import run_startup_bootstrap
 from app.core.config import settings
-from app.crud import crud_otp, crud_question_source, crud_role, crud_user
 from app.middleware.docs_basic_auth import DocsBasicAuthMiddleware
 from app.db.session import SessionLocal
 from app.schemas.api_response import error_response
@@ -27,14 +27,7 @@ async def lifespan(_: FastAPI):
     if SessionLocal is not None and should_bootstrap:
         db = SessionLocal()
         try:
-            crud_user.ensure_block_columns(db)
-            crud_user.ensure_course_access_columns(db)
-            crud_user.ensure_otp_columns(db)
-            crud_user.ensure_auth_session_columns(db)
-            crud_otp.ensure_otp_verification_columns(db)
-            crud_question_source.ensure_tables(db)
-            crud_role.ensure_seed_roles(db)
-            crud_user.get_or_create(db, settings.seed_admin_email.lower(), "admin")
+            run_startup_bootstrap(db)
             db.commit()
         except Exception:
             db.rollback()

@@ -18,6 +18,7 @@ Unit and API tests for Python services. Keep tests **fast**, **deterministic**, 
 - Prefer **`httpx.AsyncClient`** with `ASGITransport(app=...)` for async apps, or `TestClient` for sync stack.
 - Override dependencies for auth: `app.dependency_overrides[get_current_user] = lambda: fake_user`.
 - Use a **transaction rollback** or **SQLite in-memory** pattern for DB isolation; avoid hitting production-like external services in unit tests.
+- Add route contract tests for published endpoints to lock path/method behavior during refactors.
 
 ## Database
 
@@ -33,6 +34,7 @@ Unit and API tests for Python services. Keep tests **fast**, **deterministic**, 
 ## Commands
 
 ```bash
+PYTHONPATH="$PWD" python -m pytest app/tests -q
 python -m pytest                           # default discovery
 python -m pytest app/tests -q              # package only
 python -m pytest path/test_file.py::name  # single test
