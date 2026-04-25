@@ -94,9 +94,10 @@ def get_current_user(
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")
         role: str | None = payload.get("role")
+        session_id: str | None = payload.get("sid")
         # Keep auth/session token separate from course-access token.
         # course_viewer token must only be accepted by get_current_course_user.
-        if user_id is None or role == "course_viewer":
+        if user_id is None or role == "course_viewer" or not session_id:
             raise credentials_exception
     except JWTError as exc:
         raise credentials_exception from exc
@@ -109,6 +110,11 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản đã bị khóa",
+        )
+    if not user.active_session_id or user.active_session_id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên đăng nhập không còn hợp lệ.",
         )
 
     return user
@@ -138,6 +144,7 @@ def get_current_course_user(
         payload = decode_access_token(token)
         user_id: str | None = payload.get("sub")
         role: str | None = payload.get("role")
+        session_id: str | None = payload.get("sid")
         if user_id is None or role != "course_viewer":
             raise credentials_exception
     except JWTError as exc:
@@ -154,6 +161,8 @@ def get_current_course_user(
         expected_course_access_version=user.course_access_version,
         revoked_at=user.course_access_revoked_at,
     ):
+        raise credentials_exception
+    if session_id and (not user.active_session_id or session_id != user.active_session_id):
         raise credentials_exception
 
     return user

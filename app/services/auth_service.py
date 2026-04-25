@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -37,7 +39,14 @@ class AuthService:
                 detail="Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
             )
 
-        token = create_access_token(subject=user.id, role=user.role_name, email=user.email)
+        next_session_id = str(uuid.uuid4())
+        user = crud_user.rotate_active_session(db, user_id=user.id, session_id=next_session_id) or user
+        token = create_access_token(
+            subject=user.id,
+            role=user.role_name,
+            email=user.email,
+            session_id=next_session_id,
+        )
         return token, user
 
     def get_all_users(

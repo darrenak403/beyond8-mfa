@@ -20,6 +20,7 @@ class User(Base):
     blocked_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
+    active_session_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     # Course access revocation controls (for beyond8_course_access JWT invalidation).
     course_access_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     course_access_version: Mapped[int] = mapped_column(default=0, nullable=False)

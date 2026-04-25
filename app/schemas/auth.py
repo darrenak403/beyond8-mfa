@@ -10,6 +10,7 @@ class SignInRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    course_access_token: str | None = None
     token_type: str = "bearer"
     role: str
     email: EmailStr
@@ -20,6 +21,8 @@ class SessionStatusResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool
+    course_access_active: bool = False
+    course_access_expires_at: datetime | None = None
 
 
 class UserItemResponse(BaseModel):

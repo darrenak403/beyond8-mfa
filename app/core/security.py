@@ -14,7 +14,7 @@ SAFE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 # ---------------------------------------------------------------------------
 
 
-def create_access_token(subject: str, role: str, email: str, session_id: str | None = None) -> str:
+def create_access_token(subject: str, role: str, email: str, session_id: str) -> str:
     issued_at = datetime.now(timezone.utc)
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
     payload: Dict[str, Any] = {
@@ -24,8 +24,7 @@ def create_access_token(subject: str, role: str, email: str, session_id: str | N
         "iat": int(issued_at.timestamp()),
         "exp": expire,
     }
-    if session_id is not None:
-        payload["sid"] = session_id
+    payload["sid"] = session_id
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
@@ -34,6 +33,7 @@ def create_course_access_token(
     email: str,
     course_access_version: int = 0,
     expires_at: datetime | None = None,
+    session_id: str | None = None,
 ) -> str:
     issued_at = datetime.now(timezone.utc)
     expire = expires_at if expires_at is not None else (datetime.now(timezone.utc) + timedelta(days=settings.course_access_token_expire_days))
@@ -51,6 +51,8 @@ def create_course_access_token(
         "course_access_expires_at": int(expire.timestamp()),
         "exp": expire,
     }
+    if session_id:
+        payload["sid"] = session_id
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

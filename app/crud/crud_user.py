@@ -37,6 +37,11 @@ class CRUDUser:
         """Backward-compatible guard for per-user OTP counter rollout."""
         db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_rotate_count INTEGER NOT NULL DEFAULT 0"))
 
+    def ensure_auth_session_columns(self, db: Session) -> None:
+        """Backward-compatible guard for single active browser session rollout."""
+        db.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS active_session_id VARCHAR(36)"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_active_session_id ON users (active_session_id)"))
+
     @staticmethod
     def _as_utc(dt: datetime | None) -> datetime | None:
         if dt is None:
@@ -176,6 +181,15 @@ class CRUDUser:
 
         user.course_access_active = False
         user.course_access_revoked_at = datetime.now(timezone.utc)
+        db.add(user)
+        db.flush()
+        return user
+
+    def rotate_active_session(self, db: Session, *, user_id: str, session_id: str) -> User | None:
+        user = self.get_by_id(db, user_id)
+        if user is None:
+            return None
+        user.active_session_id = session_id
         db.add(user)
         db.flush()
         return user

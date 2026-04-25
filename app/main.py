@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI):
             crud_user.ensure_block_columns(db)
             crud_user.ensure_course_access_columns(db)
             crud_user.ensure_otp_columns(db)
+            crud_user.ensure_auth_session_columns(db)
             crud_otp.ensure_otp_verification_columns(db)
             crud_question_source.ensure_tables(db)
             crud_role.ensure_seed_roles(db)
@@ -94,7 +95,7 @@ async def http_exception_handler(_: Request, exc: HTTPException):
         payload = error_response(message=message, code=exc.status_code, data=None)
         response = JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
-    auth_clear_details = {"Could not validate credentials", "Tài khoản đã bị khóa"}
+    auth_clear_details = {"Could not validate credentials", "Tài khoản đã bị khóa", "Phiên đăng nhập không còn hợp lệ."}
     should_clear_auth_cookie = (exc.status_code in {401, 403}) and isinstance(exc.detail, str) and exc.detail in auth_clear_details
     if should_clear_auth_cookie:
         response.delete_cookie("auth_token", path="/")
