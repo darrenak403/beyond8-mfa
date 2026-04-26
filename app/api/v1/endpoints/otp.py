@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin, get_current_course_user, get_current_user
 from app.core.security import create_course_access_token
+from app.crud import crud_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
