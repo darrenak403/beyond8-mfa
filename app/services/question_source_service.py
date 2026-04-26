@@ -478,6 +478,25 @@ def _normalize_attempted_ordinals(raw_ordinals: object, *, question_count: int) 
     return normalized
 
 
+def _answer_count_from_payload(item: dict) -> int:
+    raw_answers = item.get("answers", [])
+    if isinstance(raw_answers, list):
+        normalized_answers = [
+            str(value).strip().upper()
+            for value in raw_answers
+            if str(value).strip()
+        ]
+        if normalized_answers:
+            return len(set(normalized_answers))
+    answer_text = str(item.get("answer", "") or "").strip()
+    if not answer_text:
+        return 0
+    parsed = [part.strip().upper() for part in re.split(r"[;,/]+", answer_text) if part.strip()]
+    if not parsed:
+        return 0
+    return len(set(parsed))
+
+
 def _resolve_resume_question_ordinal(
     *,
     current_question_ordinal: int,
@@ -581,7 +600,17 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
     if source is None:
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
     questions = crud_question_source.list_source_questions_payload(db, source.id)
-    payload = [{"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(questions, start=1)]
+    payload = [
+        {
+            "id": idx,
+            "stem": item["stem"],
+            "options": item["options"],
+            "answer": item["answer"],
+            "answerCount": _answer_count_from_payload(item),
+            "imageUrl": item.get("imageUrl"),
+        }
+        for idx, item in enumerate(questions, start=1)
+    ]
     cache_service.set_json(cache_key, payload, _CACHE_DECK_QUESTIONS_TTL_SECONDS)
     return payload
 
@@ -607,7 +636,14 @@ def get_deck_questions_page(db: Session, slug: str, deck_id: str, *, page: int, 
             db, source.id, offset=offset, limit=limit
         )
         items = [
-            {"id": offset + idx + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
+            {
+                "id": offset + idx + 1,
+                "stem": item["stem"],
+                "options": item["options"],
+                "answer": item["answer"],
+                "answerCount": _answer_count_from_payload(item),
+                "imageUrl": item.get("imageUrl"),
+            }
             for idx, item in enumerate(slice_rows)
         ]
 

@@ -156,12 +156,21 @@ def test_get_deck_questions_ok(monkeypatch):
         qs,
         "get_deck_questions",
         lambda _db, slug, deck_id: [
-            {"id": 1, "stem": "Q1", "options": [{"label": "A", "text": "Yes"}], "answer": "A"},
+            {
+                "id": 1,
+                "stem": "Q1",
+                "options": [{"label": "A", "text": "Yes"}],
+                "answer": "A",
+                "answerCount": 1,
+                "imageUrl": None,
+            },
         ],
     )
     response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions")
     assert response.status_code == 200
     assert response.json()["data"][0]["stem"] == "Q1"
+    assert response.json()["data"][0]["answerCount"] == 1
+    assert response.json()["data"][0]["imageUrl"] is None
 
 
 def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
@@ -169,7 +178,16 @@ def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
         qs,
         "get_deck_questions_page",
         lambda _db, slug, deck_id, page, limit: {
-            "items": [{"id": 1, "stem": "Q1", "options": [{"label": "A", "text": "Yes"}], "answer": "A"}],
+            "items": [
+                {
+                    "id": 1,
+                    "stem": "Q1",
+                    "options": [{"label": "A", "text": "Yes"}],
+                    "answer": "A",
+                    "answerCount": 1,
+                    "imageUrl": None,
+                }
+            ],
             "page": 1,
             "limit": 1,
             "total": 3,
@@ -191,6 +209,7 @@ def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
     assert len(body["data"]["items"]) == 1
     assert body["data"]["items"][0]["id"] == 1
     assert body["data"]["items"][0]["stem"] == "Q1"
+    assert body["data"]["items"][0]["answerCount"] == 1
 
 
 def test_get_deck_questions_paginated_page_default_limit(monkeypatch):
@@ -200,7 +219,7 @@ def test_get_deck_questions_paginated_page_default_limit(monkeypatch):
         assert page == 2
         assert limit == 1
         return {
-            "items": [{"id": 2, "stem": "Q2", "options": [], "answer": "B"}],
+            "items": [{"id": 2, "stem": "Q2", "options": [], "answer": "B", "answerCount": 1, "imageUrl": None}],
             "page": 2,
             "limit": 1,
             "total": 2,

@@ -59,6 +59,7 @@ class CRUDQuestionSource:
                     options_json JSONB NOT NULL DEFAULT '[]'::jsonb,
                     answers_json JSONB NOT NULL DEFAULT '[]'::jsonb,
                     answer_text TEXT NOT NULL,
+                    image_url TEXT,
                     normalized_hash VARCHAR(71) NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -117,6 +118,12 @@ class CRUDQuestionSource:
             text(
                 "ALTER TABLE question_source_user_stats "
                 "ADD COLUMN IF NOT EXISTS completed_attempts INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        db.execute(
+            text(
+                "ALTER TABLE questions "
+                "ADD COLUMN IF NOT EXISTS image_url TEXT"
             )
         )
 
@@ -211,7 +218,14 @@ class CRUDQuestionSource:
 
     def list_source_questions_payload(self, db: Session, source_id: str) -> list[dict]:
         rows = db.execute(
-            select(Question.ordinal, Question.stem, Question.options_json, Question.answer_text)
+            select(
+                Question.ordinal,
+                Question.stem,
+                Question.options_json,
+                Question.answer_text,
+                Question.answers_json,
+                Question.image_url,
+            )
             .where(Question.source_id == source_id)
             .order_by(Question.ordinal.asc())
         ).all()
@@ -221,6 +235,8 @@ class CRUDQuestionSource:
                 "stem": row.stem,
                 "options": row.options_json or [],
                 "answer": row.answer_text,
+                "answers": row.answers_json or [],
+                "imageUrl": row.image_url,
             }
             for row in rows
         ]
@@ -230,7 +246,14 @@ class CRUDQuestionSource:
         if limit <= 0:
             return []
         rows = db.execute(
-            select(Question.ordinal, Question.stem, Question.options_json, Question.answer_text)
+            select(
+                Question.ordinal,
+                Question.stem,
+                Question.options_json,
+                Question.answer_text,
+                Question.answers_json,
+                Question.image_url,
+            )
             .where(Question.source_id == source_id)
             .order_by(Question.ordinal.asc())
             .offset(max(0, offset))
@@ -242,6 +265,8 @@ class CRUDQuestionSource:
                 "stem": row.stem,
                 "options": row.options_json or [],
                 "answer": row.answer_text,
+                "answers": row.answers_json or [],
+                "imageUrl": row.image_url,
             }
             for row in rows
         ]

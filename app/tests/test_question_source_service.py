@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from app.services import question_source_service
 from app.services.question_source_service import (
+    _answer_count_from_payload,
     check_deck_answer,
     detect_subject_and_exam,
     detect_subject_and_exam_with_fallback,
@@ -60,6 +61,12 @@ def test_parse_questions_extracts_inline_answer_from_stem() -> None:
     assert len(questions) == 1
     assert questions[0]["stem"].endswith("là gì?")
     assert questions[0]["answer_text"] == "A"
+
+
+def test_answer_count_from_payload() -> None:
+    assert _answer_count_from_payload({"answers": ["A"], "answer": "A"}) == 1
+    assert _answer_count_from_payload({"answers": ["A", "C"], "answer": "A,C"}) == 2
+    assert _answer_count_from_payload({"answers": [], "answer": "A; C; D"}) == 3
 
 
 def test_ingest_markdown_file_persists_via_crud_path(monkeypatch) -> None:
