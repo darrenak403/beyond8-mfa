@@ -37,6 +37,7 @@ get_deck_questions_page = question_source_service.get_deck_questions_page
 check_deck_answer = question_source_service.check_deck_answer
 update_deck_progress = question_source_service.update_deck_progress
 get_deck_progress = question_source_service.get_deck_progress
+reset_deck_progress = question_source_service.reset_deck_progress
 update_deck_stats = question_source_service.update_deck_stats
 upsert_source_from_markdown_by_slug = question_source_service.upsert_source_from_markdown_by_slug
 delete_source = question_source_service.delete_source
@@ -218,6 +219,22 @@ def subject_deck_progress_get(
         user_id=current_user.id,
     )
     return success_response(data=data)
+
+
+@user_router.post("/subjects/{slug}/decks/{deck_id}/progress/reset", response_model=ApiResponse[dict])
+def subject_deck_progress_reset(
+    slug: str,
+    deck_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_course_access),
+):
+    data = reset_deck_progress(
+        db,
+        slug=slug,
+        deck_id=deck_id,
+        user_id=current_user.id,
+    )
+    return success_response(data=data, message="Deck progress reset successfully")
 
 
 @user_router.put("/subjects/{slug}/decks/{deck_id}/stats", response_model=ApiResponse[dict])

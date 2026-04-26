@@ -62,6 +62,9 @@ class QuestionSourceService:
     def get_deck_progress(self, db: Session, *, slug: str, deck_id: str, user_id: str):
         return legacy.get_deck_progress(db, slug=slug, deck_id=deck_id, user_id=user_id)
 
+    def reset_deck_progress(self, db: Session, *, slug: str, deck_id: str, user_id: str):
+        return legacy.reset_deck_progress(db, slug=slug, deck_id=deck_id, user_id=user_id)
+
     def update_deck_stats(self, db: Session, *, slug: str, deck_id: str, user_id: str, in_progress: int, completed: int):
         return legacy.update_deck_stats(
             db,

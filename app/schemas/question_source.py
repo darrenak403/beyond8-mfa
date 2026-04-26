@@ -69,6 +69,7 @@ class DeckProgressStats(BaseModel):
     total: int
     inProgress: int
     completed: int
+    learnedCount: int
     completionRatePercent: int
 
 

@@ -445,20 +445,28 @@ def _build_deck_stats(
     total_questions: int,
     current_question_ordinal: int,
     completed_attempts: int,
+    completion_rate_percent: int | None = None,
 ) -> dict:
     safe_total = max(total_questions, 0)
     safe_current = max(current_question_ordinal, 0)
     safe_completed_attempts = max(completed_attempts, 0)
-    if safe_total > 0:
-        safe_current = min(safe_current, safe_total)
-        computed_rate = int(round((safe_current / safe_total) * 100))
-    else:
+    safe_completion_rate = (
+        int(round(completion_rate_percent)) if completion_rate_percent is not None else None
+    )
+    if safe_total <= 0:
         safe_current = 0
         computed_rate = 0
+    else:
+        safe_current = min(safe_current, safe_total)
+        if safe_completion_rate is None:
+            computed_rate = int(round((safe_current / safe_total) * 100))
+        else:
+            computed_rate = max(0, min(safe_completion_rate, 100))
     return {
         "total": safe_total,
         "inProgress": safe_current,
         "completed": safe_completed_attempts,
+        "learnedCount": safe_completed_attempts,
         "completionRatePercent": max(0, min(computed_rate, 100)),
     }
 
@@ -535,19 +543,23 @@ def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> 
             user_stats.get("attempted_question_ordinals", []),
             question_count=total_questions,
         )
-        current_question_ordinal = _resolve_resume_question_ordinal(
-            current_question_ordinal=raw_current_question_ordinal,
-            attempted_question_ordinals=attempted_question_ordinals,
-            question_count=total_questions,
-        )
+        current_question_ordinal = min(max(raw_current_question_ordinal, 0), total_questions)
         completed_attempts = int(user_stats.get("completed_attempts", user_stats.get("completed_count", 0)))
+        completion_rate_percent = 0
+        if total_questions > 0:
+            completion_rate_percent = int(round((len(attempted_question_ordinals) / total_questions) * 100))
         result.append(
             {
                 "deckId": source.id,
                 "examCode": source.exam_code,
                 "fileName": source.file_name,
                 "questionCount": total_questions,
-                "stats": _build_deck_stats(total_questions, current_question_ordinal, completed_attempts),
+                "stats": _build_deck_stats(
+                    total_questions,
+                    current_question_ordinal,
+                    completed_attempts,
+                    completion_rate_percent,
+                ),
                 "uploadedAt": source.uploaded_at.isoformat() if source.uploaded_at else None,
             }
         )
@@ -793,6 +805,51 @@ def get_deck_progress(
         "currentQuestion": current_question,
         "attemptedQuestionOrdinals": attempted_question_ordinals,
         "updatedAt": updated_at.isoformat() if updated_at else None,
+    }
+
+
+def reset_deck_progress(
+    db: Session,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
+
+    current_stats = crud_question_source.list_user_stats_by_source_ids(
+        db, user_id=user_id, source_ids=[source.id]
+    ).get(source.id, {})
+    completed_attempts = int(current_stats.get("completed_attempts", current_stats.get("completed_count", 0)))
+    crud_question_source.upsert_source_user_stats(
+        db,
+        source_id=source.id,
+        user_id=user_id,
+        current_question_ordinal=0,
+        attempted_question_ordinals=[],
+        completed_attempts=completed_attempts,
+        in_progress_count=0,
+        completed_count=0,
+        completion_rate_percent=0,
+    )
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: _invalidate_user_decks(subject_slug, user_id))
+    return {
+        "deckId": source.id,
+        "subjectSlug": subject.slug,
+        "stats": _build_deck_stats(
+            total_questions=int(source.question_count or 0),
+            current_question_ordinal=0,
+            completed_attempts=completed_attempts,
+            completion_rate_percent=0,
+        ),
+        "currentQuestion": 0,
+        "attemptedQuestionOrdinals": [],
     }
 
 

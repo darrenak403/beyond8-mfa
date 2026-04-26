@@ -12,6 +12,7 @@ from app.services.question_source_service import (
     get_subject_decks,
     ingest_markdown_file,
     parse_questions,
+    reset_deck_progress,
     update_deck_progress,
     update_deck_stats,
 )
@@ -111,8 +112,10 @@ def test_get_subject_decks_excludes_aggregated_bank(monkeypatch) -> None:
     assert len(decks) == 1
     assert decks[0]["deckId"] == "src-deck"
     assert decks[0]["stats"]["total"] == 50
-    assert decks[0]["stats"]["inProgress"] == 1
+    assert decks[0]["stats"]["inProgress"] == 0
     assert decks[0]["stats"]["completed"] == 0
+    assert decks[0]["stats"]["learnedCount"] == 0
+    assert decks[0]["stats"]["completionRatePercent"] == 0
 
 
 def test_update_deck_stats_validates_total(monkeypatch) -> None:
@@ -246,3 +249,29 @@ def test_check_deck_answer_returns_correctness(monkeypatch) -> None:
     )
     assert correct["isCorrect"] is True
     assert correct["correctAnswers"] == ["B"]
+
+
+def test_reset_deck_progress_resets_state_but_keeps_learned_count(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="subject-1", slug="pmg201c")
+    fake_source = SimpleNamespace(id="src-deck", question_count=50)
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.get_source_by_id.return_value = fake_source
+    fake_crud.list_user_stats_by_source_ids.return_value = {
+        "src-deck": {"completed_attempts": 3, "current_question_ordinal": 17, "attempted_question_ordinals": [1, 2, 3]}
+    }
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    result = reset_deck_progress(
+        Mock(),
+        slug="pmg201c",
+        deck_id="src-deck",
+        user_id="user-1",
+    )
+
+    assert result["currentQuestion"] == 0
+    assert result["attemptedQuestionOrdinals"] == []
+    assert result["stats"]["inProgress"] == 0
+    assert result["stats"]["completionRatePercent"] == 0
+    assert result["stats"]["learnedCount"] == 3
+    fake_crud.upsert_source_user_stats.assert_called_once()

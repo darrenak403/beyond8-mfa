@@ -98,6 +98,7 @@ def test_get_decks_ok(monkeypatch):
                     "total": 2,
                     "inProgress": 0,
                     "completed": 0,
+                    "learnedCount": 0,
                     "completionRatePercent": 0,
                 },
                 "uploadedAt": None,
@@ -315,6 +316,30 @@ def test_get_deck_progress_ok(monkeypatch):
     response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/progress")
     assert response.status_code == 200
     assert response.json()["data"]["attemptedQuestionOrdinals"] == [1, 2, 3]
+
+
+def test_post_deck_progress_reset_ok(monkeypatch):
+    monkeypatch.setattr(
+        qs,
+        "reset_deck_progress",
+        lambda _db, **kwargs: {
+            "deckId": "d1",
+            "subjectSlug": "pmg201c",
+            "currentQuestion": 0,
+            "attemptedQuestionOrdinals": [],
+            "stats": {
+                "total": 60,
+                "inProgress": 0,
+                "completed": 0,
+                "learnedCount": 2,
+                "completionRatePercent": 0,
+            },
+        },
+    )
+    response = _run("POST", "/api/v1/subjects/pmg201c/decks/d1/progress/reset")
+    assert response.status_code == 200
+    assert response.json()["data"]["currentQuestion"] == 0
+    assert response.json()["data"]["stats"]["learnedCount"] == 2
 
 
 def test_put_deck_stats_ok(monkeypatch):
