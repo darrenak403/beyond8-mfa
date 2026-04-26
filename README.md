@@ -41,7 +41,7 @@ KEY_PREFIX=BY8
 OTP_TTL_SECONDS=60
 OTP_REFRESH_COOLDOWN_SECONDS=60
 
-CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000,http://127.0.0.1:8989,http://localhost:8989,https://source.beyond8.io.vn,https://mfa.beyond8.io.vn
+CORS_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://localhost:3000,http://127.0.0.1:8989,http://localhost:8989,https://source.beyond8.io.vn,https://mfa.beyond8.io.vn,https://hoctot.beyond8.io.vn
 ```
 
 ## 3. Khởi tạo Backend Cục bộ (Local commands)
