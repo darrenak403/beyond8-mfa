@@ -56,7 +56,19 @@ def _overrides_cleanup():
 
 
 def test_get_subjects_empty(monkeypatch):
-    monkeypatch.setattr(qs, "service_list_subjects", lambda _db: [])
+    monkeypatch.setattr(
+        qs,
+        "service_list_subjects_page",
+        lambda _db, page, limit: {
+            "items": [],
+            "page": page,
+            "limit": limit,
+            "total": 0,
+            "totalPages": 0,
+            "hasNext": False,
+            "hasPrevious": False,
+        },
+    )
     response = _run("GET", "/api/v1/subjects")
     assert response.status_code == 200
     body = response.json()
@@ -72,8 +84,16 @@ def test_get_subjects_empty(monkeypatch):
 def test_get_subjects_nonempty(monkeypatch):
     monkeypatch.setattr(
         qs,
-        "service_list_subjects",
-        lambda _db: [{"slug": "pmg201c", "code": "PMG201C", "hint": "Mon luyen de"}],
+        "service_list_subjects_page",
+        lambda _db, page, limit: {
+            "items": [{"slug": "pmg201c", "code": "PMG201C", "hint": "Mon luyen de"}],
+            "page": page,
+            "limit": limit,
+            "total": 1,
+            "totalPages": 1,
+            "hasNext": False,
+            "hasPrevious": False,
+        },
     )
     response = _run("GET", "/api/v1/subjects")
     assert response.status_code == 200
@@ -113,20 +133,42 @@ def test_get_decks_ok(monkeypatch):
 
 
 def test_get_bank_empty(monkeypatch):
-    monkeypatch.setattr(qs, "get_subject_bank", lambda _db, _slug: [])
-    response = _run("GET", "/api/v1/subjects/pmg201c/bank")
+    monkeypatch.setattr(
+        qs,
+        "get_subject_bank_page",
+        lambda _db, _slug, page, limit: {
+            "items": [],
+            "page": page,
+            "limit": limit,
+            "total": 0,
+            "totalPages": 0,
+            "hasNext": False,
+            "hasPrevious": False,
+        },
+    )
+    monkeypatch.setattr(
+        qs,
+        "get_subject_bank_progress",
+        lambda _db, slug, user_id: {"resumeQuestion": 0, "attemptedQuestionOrdinals": []},
+    )
+    response = _run("GET", "/api/v1/subjects/pmg201c/bank?page=1&limit=10")
     assert response.status_code == 200
-    assert response.json()["data"] == []
+    assert response.json()["data"]["items"] == []
 
 
 def test_get_bank_paginated(monkeypatch):
     monkeypatch.setattr(
         qs,
-        "get_subject_bank",
-        lambda _db, _slug: [
-            {"id": 1, "stem": "A", "options": [], "answer": "A"},
-            {"id": 2, "stem": "B", "options": [], "answer": "B"},
-        ],
+        "get_subject_bank_page",
+        lambda _db, _slug, page, limit: {
+            "items": [{"id": 1, "stem": "A", "options": [], "answer": "A"}],
+            "page": page,
+            "limit": limit,
+            "total": 2,
+            "totalPages": 2,
+            "hasNext": True,
+            "hasPrevious": False,
+        },
     )
     monkeypatch.setattr(
         qs,
@@ -154,23 +196,31 @@ def test_get_bank_paginated(monkeypatch):
 def test_get_deck_questions_ok(monkeypatch):
     monkeypatch.setattr(
         qs,
-        "get_deck_questions",
-        lambda _db, slug, deck_id: [
-            {
-                "id": 1,
-                "stem": "Q1",
-                "options": [{"label": "A", "text": "Yes"}],
-                "answer": "A",
-                "answerCount": 1,
-                "imageUrl": None,
-            },
-        ],
+        "get_deck_questions_page",
+        lambda _db, slug, deck_id, page, limit: {
+            "items": [
+                {
+                    "id": 1,
+                    "stem": "Q1",
+                    "options": [{"label": "A", "text": "Yes"}],
+                    "answer": "A",
+                    "answerCount": 1,
+                    "imageUrl": None,
+                }
+            ],
+            "page": page,
+            "limit": limit,
+            "total": 1,
+            "totalPages": 1,
+            "hasNext": False,
+            "hasPrevious": False,
+        },
     )
-    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions")
+    response = _run("GET", "/api/v1/subjects/pmg201c/decks/d1/questions?page=1&limit=1")
     assert response.status_code == 200
-    assert response.json()["data"][0]["stem"] == "Q1"
-    assert response.json()["data"][0]["answerCount"] == 1
-    assert response.json()["data"][0]["imageUrl"] is None
+    assert response.json()["data"]["items"][0]["stem"] == "Q1"
+    assert response.json()["data"]["items"][0]["answerCount"] == 1
+    assert response.json()["data"]["items"][0]["imageUrl"] is None
 
 
 def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
@@ -213,7 +263,7 @@ def test_get_deck_questions_paginated_page1_limit1(monkeypatch):
 
 
 def test_get_deck_questions_paginated_page_default_limit(monkeypatch):
-    """When `page` is set and `limit` omitted, service receives limit=1."""
+    """When `limit` is omitted, endpoint default is 1."""
 
     def _page(_db, slug, deck_id, *, page, limit):
         assert page == 2

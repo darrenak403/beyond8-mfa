@@ -4,6 +4,36 @@
 
 YAGNI · KISS · DRY · Brutal honesty over diplomacy · Challenge every assumption
 
+## Execution Guardrails (Global)
+
+These rules apply to all implementation tasks in this repository:
+
+1. **Plan fidelity is mandatory**
+   - Implement exactly what is approved in the plan.
+   - Do not change API contracts, response shapes, endpoint semantics, or migration strategy unless the plan explicitly says so.
+   - If a deviation is required, stop and ask the user first.
+
+2. **Todo discipline is mandatory**
+   - Use existing todos; do not recreate duplicates.
+   - Set exactly one todo to `in_progress` at a time.
+   - Move to next todo only after validation for current todo is complete.
+   - Do not mark `completed` without evidence (tests/verification output).
+
+3. **Backward compatibility default**
+   - Existing endpoint behavior is preserved by default.
+   - Any breaking change requires explicit user approval.
+   - If optimization conflicts with compatibility, prioritize compatibility and propose a phased migration.
+
+4. **Verification before done**
+   - Before claiming completion, run relevant tests/lints for changed areas.
+   - Report what was executed and concrete outcomes.
+   - If verification cannot be executed, state that clearly and provide exact manual commands.
+
+5. **No hidden scope expansion**
+   - Avoid unrelated refactors while implementing a plan.
+   - Keep changes minimal and localized to plan scope.
+   - If unexpected issues appear, surface them and ask for direction.
+
 ## Structure
 
 ```

@@ -18,4 +18,7 @@ class OTPVerificationHistoryItem(BaseModel):
 
 class OTPVerificationHistoryResponse(BaseModel):
     total_users: int
+    page: int
+    limit: int
+    total_pages: int
     items: list[OTPVerificationHistoryItem]

@@ -282,6 +282,23 @@ def list_subjects(db: Session) -> list[dict]:
     return payload
 
 
+def list_subjects_page(db: Session, *, page: int, limit: int) -> dict:
+    total = crud_question_source.count_subjects(db)
+    offset = (page - 1) * limit
+    rows = crud_question_source.list_subjects_page(db, offset=offset, limit=limit)
+    items = [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in rows]
+    total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "totalPages": total_pages,
+        "hasNext": total > 0 and page < total_pages,
+        "hasPrevious": page > 1 and total > 0,
+    }
+
+
 def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
     normalized_slug = slug.lower()
     version = _cache_subject_version(normalized_slug)
@@ -307,6 +324,36 @@ def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
     ]
     cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
     return payload
+
+
+def get_admin_subject_sources_page(db: Session, slug: str, *, page: int, limit: int) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    total = crud_question_source.count_sources_by_subject(db, subject.id)
+    offset = (page - 1) * limit
+    rows = crud_question_source.list_sources_by_subject_page(db, subject_id=subject.id, offset=offset, limit=limit)
+    items = [
+        {
+            "sourceId": source.id,
+            "examCode": re.sub(r"\.md$", "", source.file_name, flags=re.IGNORECASE),
+            "fileName": source.file_name,
+            "questionCount": int(source.question_count or 0),
+            "isAggregatedBank": _is_aggregated_bank_filename(source.file_name),
+            "uploadedAt": source.uploaded_at.isoformat() if source.uploaded_at else None,
+        }
+        for source in rows
+    ]
+    total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "totalPages": total_pages,
+        "hasNext": total > 0 and page < total_pages,
+        "hasPrevious": page > 1 and total > 0,
+    }
 
 
 def get_source_state(db: Session, slug: str) -> dict:
@@ -388,6 +435,30 @@ def get_subject_bank(db: Session, slug: str) -> list[dict]:
     payload = [{"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(questions, start=1)]
     cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
     return payload
+
+
+def get_subject_bank_page(db: Session, slug: str, *, page: int, limit: int) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    sources = crud_question_source.list_sources_by_subject(db, subject.id)
+    if not sources:
+        return {"items": [], "page": page, "limit": limit, "total": 0, "totalPages": 0, "hasNext": False, "hasPrevious": page > 1}
+    source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
+    total = int(source.question_count or 0)
+    offset = (page - 1) * limit
+    slice_rows = crud_question_source.list_source_questions_payload_slice(db, source.id, offset=offset, limit=limit)
+    items = [{"id": offset + idx + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(slice_rows)]
+    total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "totalPages": total_pages,
+        "hasNext": total > 0 and page < total_pages,
+        "hasPrevious": page > 1 and total > 0,
+    }
 
 
 def get_subject_bank_progress(db: Session, *, slug: str, user_id: str) -> dict:

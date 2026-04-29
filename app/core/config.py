@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     docs_basic_auth_password: str = Field(default="", alias="DOCS_BASIC_AUTH_PASSWORD")
 
     database_url: str = Field(default="", alias="DATABASE_URL")
+    async_database_url: str = Field(default="", alias="ASYNC_DATABASE_URL")
+    sql_slow_query_ms: int = Field(default=200, alias="SQL_SLOW_QUERY_MS")
+    http_slow_request_ms: int = Field(default=500, alias="HTTP_SLOW_REQUEST_MS")
 
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"

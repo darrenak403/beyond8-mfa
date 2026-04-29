@@ -9,15 +9,24 @@ class QuestionSourceService:
 
     def list_subjects(self, db: Session):
         return legacy.list_subjects(db)
+    
+    def list_subjects_page(self, db: Session, *, page: int, limit: int):
+        return legacy.list_subjects_page(db, page=page, limit=limit)
 
     def get_admin_subject_sources(self, db: Session, slug: str):
         return legacy.get_admin_subject_sources(db, slug)
+    
+    def get_admin_subject_sources_page(self, db: Session, slug: str, *, page: int, limit: int):
+        return legacy.get_admin_subject_sources_page(db, slug, page=page, limit=limit)
 
     def get_source_state(self, db: Session, slug: str):
         return legacy.get_source_state(db, slug)
 
     def get_subject_bank(self, db: Session, slug: str):
         return legacy.get_subject_bank(db, slug)
+    
+    def get_subject_bank_page(self, db: Session, slug: str, *, page: int, limit: int):
+        return legacy.get_subject_bank_page(db, slug, page=page, limit=limit)
 
     def get_subject_bank_progress(self, db: Session, *, slug: str, user_id: str):
         return legacy.get_subject_bank_progress(db, slug=slug, user_id=user_id)

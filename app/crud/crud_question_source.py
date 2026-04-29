@@ -1,7 +1,7 @@
 import json
 import uuid
 
-from sqlalchemy import select, text
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -181,22 +181,40 @@ class CRUDQuestionSource:
 
     def replace_source_questions(self, db: Session, *, source_id: str, payload: list[dict]) -> None:
         db.execute(text("DELETE FROM questions WHERE source_id = :source_id"), {"source_id": source_id})
-        for item in payload:
-            db.add(
-                Question(
-                    source_id=source_id,
-                    ordinal=item["ordinal"],
-                    stem=item["stem"],
-                    options_json=item["options"],
-                    answers_json=item["answers"],
-                    answer_text=item["answer_text"],
-                    normalized_hash=item["normalized_hash"],
-                )
+        if payload:
+            db.execute(
+                insert(Question),
+                [
+                    {
+                        "source_id": source_id,
+                        "ordinal": item["ordinal"],
+                        "stem": item["stem"],
+                        "options_json": item["options"],
+                        "answers_json": item["answers"],
+                        "answer_text": item["answer_text"],
+                        "normalized_hash": item["normalized_hash"],
+                    }
+                    for item in payload
+                ],
             )
         db.flush()
 
     def list_subjects(self, db: Session) -> list[Subject]:
         return list(db.execute(select(Subject).where(Subject.is_active.is_(True)).order_by(Subject.code.asc())).scalars().all())
+
+    def count_subjects(self, db: Session) -> int:
+        return int(db.execute(select(func.count(Subject.id)).where(Subject.is_active.is_(True))).scalar_one() or 0)
+
+    def list_subjects_page(self, db: Session, *, offset: int, limit: int) -> list[Subject]:
+        return list(
+            db.execute(
+                select(Subject)
+                .where(Subject.is_active.is_(True))
+                .order_by(Subject.code.asc())
+                .offset(max(0, offset))
+                .limit(limit)
+            ).scalars().all()
+        )
 
     def get_subject_by_slug(self, db: Session, slug: str) -> Subject | None:
         return db.execute(select(Subject).where(Subject.slug == slug, Subject.is_active.is_(True))).scalar_one_or_none()
@@ -320,6 +338,33 @@ class CRUDQuestionSource:
                     QuestionSource.is_deleted.is_(False),
                 )
                 .order_by(QuestionSource.uploaded_at.desc(), QuestionSource.id.desc())
+            ).scalars().all()
+        )
+
+    def count_sources_by_subject(self, db: Session, subject_id: str) -> int:
+        return int(
+            db.execute(
+                select(func.count(QuestionSource.id)).where(
+                    QuestionSource.subject_id == subject_id,
+                    QuestionSource.parse_status == ParseStatus.SUCCESS.value,
+                    QuestionSource.is_deleted.is_(False),
+                )
+            ).scalar_one()
+            or 0
+        )
+
+    def list_sources_by_subject_page(self, db: Session, *, subject_id: str, offset: int, limit: int) -> list[QuestionSource]:
+        return list(
+            db.execute(
+                select(QuestionSource)
+                .where(
+                    QuestionSource.subject_id == subject_id,
+                    QuestionSource.parse_status == ParseStatus.SUCCESS.value,
+                    QuestionSource.is_deleted.is_(False),
+                )
+                .order_by(QuestionSource.uploaded_at.desc(), QuestionSource.id.desc())
+                .offset(max(0, offset))
+                .limit(limit)
             ).scalars().all()
         )
 

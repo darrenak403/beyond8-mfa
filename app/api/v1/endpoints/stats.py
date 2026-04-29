@@ -20,5 +20,7 @@ def otp_verification_history(
     _=Depends(get_current_admin),
     db: Session = Depends(get_db),
     user_id: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
 ):
-    return build_otp_history_response(db, user_id=user_id)
+    return build_otp_history_response(db, user_id=user_id, page=page, limit=limit)

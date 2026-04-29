@@ -27,9 +27,12 @@ router = APIRouter()
 # Backward-compatible aliases for existing contract tests that monkeypatch
 # endpoint-level symbols directly.
 service_list_subjects = question_source_service.list_subjects
+service_list_subjects_page = question_source_service.list_subjects_page
 get_admin_subject_sources = question_source_service.get_admin_subject_sources
+get_admin_subject_sources_page = question_source_service.get_admin_subject_sources_page
 get_source_state = question_source_service.get_source_state
 get_subject_bank = question_source_service.get_subject_bank
+get_subject_bank_page = question_source_service.get_subject_bank_page
 get_subject_bank_progress = question_source_service.get_subject_bank_progress
 get_subject_decks = question_source_service.get_subject_decks
 get_deck_questions = question_source_service.get_deck_questions
@@ -54,8 +57,7 @@ def list_subjects(
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    full = service_list_subjects(db)
-    return success_response(data=paginate_slice(full, page=page, limit=limit))
+    return success_response(data=service_list_subjects_page(db, page=page, limit=limit))
 
 
 @admin_router.get(
@@ -69,8 +71,7 @@ def admin_list_subjects(
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    full = service_list_subjects(db)
-    return success_response(data=paginate_slice(full, page=page, limit=limit))
+    return success_response(data=service_list_subjects_page(db, page=page, limit=limit))
 
 
 @admin_router.get(
@@ -85,8 +86,7 @@ def admin_subject_sources(
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    full = get_admin_subject_sources(db, slug)
-    return success_response(data=paginate_slice(full, page=page, limit=limit))
+    return success_response(data=get_admin_subject_sources_page(db, slug, page=page, limit=limit))
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])
@@ -98,25 +98,16 @@ def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(req
 @user_router.get(
     "/subjects/{slug}/bank",
     response_model=ApiResponse[Any],
-    summary="Subject bank questions (full list or paginated)",
-    description=(
-        "Without `page`: returns `data` as a full array (legacy). "
-        "With `page`: returns paginated object; `limit` optional (default 10, max "
-        f"{MAX_PAGE_SIZE}), controlled by the client."
-    ),
+    summary="Subject bank questions (paginated)",
 )
 def subject_bank(
     slug: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_course_access),
-    page: int | None = Query(default=None, ge=1),
-    limit: int | None = Query(default=None, ge=1, le=MAX_PAGE_SIZE),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    data = get_subject_bank(db, slug)
-    if page is None:
-        return success_response(data=data)
-    eff_limit = DEFAULT_PAGE_SIZE if limit is None else limit
-    paginated = paginate_slice(data, page=page, limit=eff_limit)
+    paginated = get_subject_bank_page(db, slug, page=page, limit=limit)
     progress = get_subject_bank_progress(db, slug=slug, user_id=current_user.id)
     return success_response(data={**paginated, "progress": progress})
 
@@ -141,26 +132,17 @@ def subject_decks(
 @user_router.get(
     "/subjects/{slug}/decks/{deck_id}/questions",
     response_model=ApiResponse[Any],
-    summary="List deck questions (full or paginated)",
-    description=(
-        "Without `page`: returns `data` as a full list (legacy). "
-        "With `page`: returns `data` as an object with `items`, `page`, `limit`, `total`, "
-        "`totalPages`, `hasNext`, `hasPrevious`. When `page` is set, `limit` defaults to 1 (one question per page)."
-    ),
+    summary="List deck questions (paginated)",
 )
 def subject_deck_questions(
     slug: str,
     deck_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(require_course_access),
-    page: int | None = Query(default=None, ge=1),
-    limit: int | None = Query(default=None, ge=1, le=50),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(default=1, ge=1, le=50),
 ):
-    if page is None:
-        data = get_deck_questions(db, slug, deck_id)
-        return success_response(data=data)
-    effective_limit = 1 if limit is None else limit
-    data = get_deck_questions_page(db, slug, deck_id, page=page, limit=effective_limit)
+    data = get_deck_questions_page(db, slug, deck_id, page=page, limit=limit)
     return success_response(data=data)
 
 
