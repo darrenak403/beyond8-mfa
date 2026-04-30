@@ -1,3 +1,9 @@
 {
+  "files.exclude": {
+    "**/*$py.class": true,
+    "**/*.pyc": true,
+    "**/*.pyo": true,
+    "**/__pycache__": true
+  },
   "python-envs.defaultEnvManager": "ms-python.python:system"
 }
