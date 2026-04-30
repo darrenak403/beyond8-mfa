@@ -491,5 +491,85 @@ class CRUDQuestionSource:
             select(Question).where(Question.source_id == source_id, Question.ordinal == ordinal)
         ).scalar_one_or_none()
 
+    def get_source_state_optimized(self, db: Session, slug: str) -> tuple[list[QuestionSource], dict[str, list[dict]]]:
+        """
+        Optimized query that fetches sources and their questions in a single query using JOIN.
+        Returns tuple of (sources, questions_by_source_id).
+        """
+        # Single query with LEFT JOIN to fetch sources and questions together
+        query = (
+            select(QuestionSource, Question)
+            .join(Subject, QuestionSource.subject_id == Subject.id)
+            .outerjoin(Question, QuestionSource.id == Question.source_id)
+            .where(
+                Subject.slug == slug,
+                Subject.is_active.is_(True),
+                QuestionSource.is_deleted.is_(False),
+                QuestionSource.parse_status == ParseStatus.SUCCESS.value,
+            )
+            .order_by(QuestionSource.uploaded_at.desc(), QuestionSource.id.desc(), Question.ordinal.asc())
+        )
+
+        results = db.execute(query).all()
+
+        # Process results in single pass
+        sources_dict: dict[str, QuestionSource] = {}
+        questions_by_source: dict[str, list[dict]] = {}
+
+        for source, question in results:
+            source_id = source.id
+
+            # Add source if not already added
+            if source_id not in sources_dict:
+                sources_dict[source_id] = source
+                questions_by_source[source_id] = []
+
+            # Add question if exists
+            if question is not None:
+                questions_by_source[source_id].append(
+                    {
+                        "ordinal": int(question.ordinal or 0),
+                        "stem": question.stem,
+                        "options": question.options_json or [],
+                        "answer": question.answer_text,
+                    }
+                )
+
+        # Convert to ordered list based on original query order
+        sources = list(sources_dict.values())
+
+        return sources, questions_by_source
+
+    def get_subject_decks_optimized(self, db: Session, slug: str, user_id: str | None = None) -> tuple[list[QuestionSource], dict[str, dict]]:
+        """
+        Optimized query that fetches sources and user stats efficiently.
+        Returns tuple of (deck_sources, stats_by_source_id).
+        """
+        # Get subject first
+        subject = self.get_subject_by_slug(db, slug)
+        if subject is None:
+            return [], {}
+
+        # Get all sources for subject
+        sources = self.list_sources_by_subject(db, subject.id)
+
+        # Filter deck sources (non-aggregated bank)
+        deck_sources = [source for source in sources if not self._is_aggregated_bank_filename(source.file_name)]
+
+        # Get user stats in batch if user_id provided
+        stats_by_source_id: dict[str, dict] = {}
+        if user_id and deck_sources:
+            source_ids = [source.id for source in deck_sources]
+            stats_by_source_id = self.list_user_stats_by_source_ids(db, user_id=user_id, source_ids=source_ids)
+
+        return deck_sources, stats_by_source_id
+
+    def _is_aggregated_bank_filename(self, file_name: str) -> bool:
+        """Helper method to check if filename is aggregated bank."""
+        import unicodedata
+
+        normalized = unicodedata.normalize("NFKC", file_name).strip().lower()
+        return normalized == "cau-hoi-tong-hop.md" or normalized == "cau-hoi-tong-hop"
+
 
 crud_question_source = CRUDQuestionSource()

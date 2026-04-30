@@ -17,6 +17,12 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default="", alias="DATABASE_URL")
     async_database_url: str = Field(default="", alias="ASYNC_DATABASE_URL")
+    db_pool_size: int = Field(default=20, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=10, alias="DB_MAX_OVERFLOW")
+    db_pool_recycle_seconds: int = Field(default=3600, alias="DB_POOL_RECYCLE_SECONDS")
+    db_pool_pre_ping: bool = Field(default=True, alias="DB_POOL_PRE_PING")
+    enable_query_optimization: bool = Field(default=True, alias="ENABLE_QUERY_OPTIMIZATION")
+    enable_async_database: bool = Field(default=True, alias="ENABLE_ASYNC_DATABASE")
     sql_slow_query_ms: int = Field(default=200, alias="SQL_SLOW_QUERY_MS")
     http_slow_request_ms: int = Field(default=500, alias="HTTP_SLOW_REQUEST_MS")
 

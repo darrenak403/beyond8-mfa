@@ -6,9 +6,11 @@ import unicodedata
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.crud import crud_question_source
+from app.crud.crud_question_source_async import crud_question_source_async
 from app.services.cache_service import cache_service
 
 _SUBJECT_PATTERN = re.compile(r"^[A-Z]{3,4}[0-9]{3}[A-Z]?$")
@@ -20,10 +22,10 @@ _OPTION_LINE = re.compile(r"^\s*([A-D])[\).:\-]\s*(.+)$", flags=re.IGNORECASE)
 _ANSWER_LINE = re.compile(r"^\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE)
 _INLINE_ANSWER = re.compile(r"\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*([A-D](?:\s*[,;/]\s*[A-D])*)\s*$", flags=re.IGNORECASE)
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
-_CACHE_SUBJECTS_TTL_SECONDS = 600
-_CACHE_SUBJECT_READ_TTL_SECONDS = 300
-_CACHE_DECK_LIST_TTL_SECONDS = 120
-_CACHE_DECK_QUESTIONS_TTL_SECONDS = 600
+_CACHE_SUBJECTS_TTL_SECONDS = 3600
+_CACHE_SUBJECT_READ_TTL_SECONDS = 1800
+_CACHE_DECK_LIST_TTL_SECONDS = 600
+_CACHE_DECK_QUESTIONS_TTL_SECONDS = 1800
 logger = logging.getLogger(__name__)
 
 
@@ -363,20 +365,22 @@ def get_source_state(db: Session, slug: str) -> dict:
     cached = cache_service.get_json(cache_key)
     if isinstance(cached, dict):
         return cached
-    subject = crud_question_source.get_subject_by_slug(db, slug)
-    if subject is None:
-        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
-    sources = crud_question_source.list_sources_by_subject(db, subject.id)
+
+    # Use optimized query that fetches sources and questions in single query
+    sources, questions_by_source = crud_question_source.get_source_state_optimized(db, slug)
+
     if not sources:
+        subject = crud_question_source.get_subject_by_slug(db, slug)
+        if subject is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
         payload = {"bankQuestions": [], "deckQuestions": [], "files": [], "hocTheoDeLayout": "markdownFiles"}
         cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
         return payload
+
     bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
     deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
 
-    load_ids = [bank_source.id, *[s.id for s in deck_sources]]
-    questions_by_source = crud_question_source.list_questions_payload_by_source_ids(db, load_ids)
-
+    # Questions are already loaded by optimized query
     bank_questions = questions_by_source.get(bank_source.id, [])
     bank_formatted = [
         {"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
@@ -612,16 +616,47 @@ def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> 
     cached = cache_service.get_json(cache_key)
     if isinstance(cached, list):
         return cached
-    subject = crud_question_source.get_subject_by_slug(db, slug)
-    if subject is None:
-        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
-    sources = crud_question_source.list_sources_by_subject(db, subject.id)
-    deck_sources = [source for source in sources if not _is_aggregated_bank_filename(source.file_name)]
-    stats_by_source_id: dict[str, dict] = {}
-    if user_id:
-        stats_by_source_id = crud_question_source.list_user_stats_by_source_ids(
-            db, user_id=user_id, source_ids=[item.id for item in deck_sources]
+
+    # Use optimized query when available, while keeping compatibility with mocked/test CRUD doubles.
+    optimized_result = getattr(crud_question_source, "get_subject_decks_optimized", None)
+    if callable(optimized_result):
+        maybe_result = optimized_result(db, slug, user_id)
+        if isinstance(maybe_result, tuple) and len(maybe_result) == 2:
+            deck_sources, stats_by_source_id = maybe_result
+        else:
+            subject = crud_question_source.get_subject_by_slug(db, slug)
+            if subject is None:
+                raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+            sources = crud_question_source.list_sources_by_subject(db, subject.id)
+            deck_sources = [source for source in sources if not _is_aggregated_bank_filename(source.file_name)]
+            stats_by_source_id = (
+                crud_question_source.list_user_stats_by_source_ids(
+                    db, user_id=user_id, source_ids=[item.id for item in deck_sources]
+                )
+                if user_id
+                else {}
+            )
+    else:
+        subject = crud_question_source.get_subject_by_slug(db, slug)
+        if subject is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+        sources = crud_question_source.list_sources_by_subject(db, subject.id)
+        deck_sources = [source for source in sources if not _is_aggregated_bank_filename(source.file_name)]
+        stats_by_source_id = (
+            crud_question_source.list_user_stats_by_source_ids(
+                db, user_id=user_id, source_ids=[item.id for item in deck_sources]
+            )
+            if user_id
+            else {}
         )
+
+    if not deck_sources:
+        subject = crud_question_source.get_subject_by_slug(db, slug)
+        if subject is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+        cache_service.set_json(cache_key, [], _CACHE_DECK_LIST_TTL_SECONDS)
+        return []
+
     result: list[dict] = []
     for source in deck_sources:
         total_questions = int(source.question_count or 0)
@@ -1222,3 +1257,142 @@ def delete_source(db: Session, *, slug: str, source_id: str) -> dict:
         "deleted": True,
         "hardDeleted": True,
     }
+
+
+async def list_subjects_page_async(db: AsyncSession, *, page: int, limit: int) -> dict:
+    return await db.run_sync(lambda sync_db: list_subjects_page(sync_db, page=page, limit=limit))
+
+
+async def get_admin_subject_sources_page_async(db: AsyncSession, slug: str, *, page: int, limit: int) -> dict:
+    return await db.run_sync(lambda sync_db: get_admin_subject_sources_page(sync_db, slug, page=page, limit=limit))
+
+
+async def get_source_state_async(db: AsyncSession, slug: str) -> dict:
+    normalized_slug = slug.lower()
+    version = _cache_subject_version(normalized_slug)
+    cache_key = f"qs:subject:{normalized_slug}:source-state:v{version}"
+    cached = cache_service.get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+    sources, questions_by_source = await crud_question_source_async.get_source_state_async(db, slug)
+    if not sources:
+        subject = await db.run_sync(lambda sync_db: crud_question_source.get_subject_by_slug(sync_db, slug))
+        if subject is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+        payload = {"bankQuestions": [], "deckQuestions": [], "files": [], "hocTheoDeLayout": "markdownFiles"}
+        cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+        return payload
+    bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
+    deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
+    bank_questions = questions_by_source.get(bank_source.id, [])
+    bank_formatted = [
+        {"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
+        for idx, item in enumerate(bank_questions, start=1)
+    ]
+    deck_questions: list[dict] = []
+    files: list[dict] = []
+    running_index = 0
+    for source in deck_sources:
+        questions = questions_by_source.get(source.id, [])
+        start = running_index
+        next_questions = [
+            {"id": idx + running_index + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
+            for idx, item in enumerate(questions)
+        ]
+        deck_questions.extend(next_questions)
+        running_index = len(deck_questions)
+        end = running_index - 1
+        has_questions = len(questions) > 0
+        files.append(
+            {
+                "deckId": source.id,
+                "fileName": source.file_name,
+                "isEmpty": not has_questions,
+                "questionCount": int(source.question_count or 0),
+                "range": {"start": start, "end": end} if has_questions else {"start": 0, "end": 0},
+            }
+        )
+    payload = {
+        "bankQuestions": bank_formatted,
+        "deckQuestions": deck_questions,
+        "files": files,
+        "hocTheoDeLayout": "markdownFiles",
+    }
+    cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
+    return payload
+
+
+async def get_subject_bank_page_async(db: AsyncSession, slug: str, *, page: int, limit: int) -> dict:
+    return await db.run_sync(lambda sync_db: get_subject_bank_page(sync_db, slug, page=page, limit=limit))
+
+
+async def get_subject_bank_progress_async(db: AsyncSession, *, slug: str, user_id: str) -> dict:
+    return await db.run_sync(lambda sync_db: get_subject_bank_progress(sync_db, slug=slug, user_id=user_id))
+
+
+async def get_subject_decks_async(db: AsyncSession, slug: str, *, user_id: str | None = None) -> list[dict]:
+    return await db.run_sync(lambda sync_db: get_subject_decks(sync_db, slug, user_id=user_id))
+
+
+async def get_deck_questions_page_async(db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int) -> dict:
+    return await db.run_sync(lambda sync_db: get_deck_questions_page(sync_db, slug, deck_id, page=page, limit=limit))
+
+
+async def check_deck_answer_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    deck_id: str,
+    question_id: int,
+    selected_answer: str,
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: check_deck_answer(
+            sync_db, slug=slug, deck_id=deck_id, question_id=question_id, selected_answer=selected_answer
+        )
+    )
+
+
+async def update_deck_progress_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+    current_question: int,
+    attempted_question_ordinals: list[int],
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: update_deck_progress(
+            sync_db,
+            slug=slug,
+            deck_id=deck_id,
+            user_id=user_id,
+            current_question=current_question,
+            attempted_question_ordinals=attempted_question_ordinals,
+        )
+    )
+
+
+async def get_deck_progress_async(db: AsyncSession, *, slug: str, deck_id: str, user_id: str) -> dict:
+    return await db.run_sync(lambda sync_db: get_deck_progress(sync_db, slug=slug, deck_id=deck_id, user_id=user_id))
+
+
+async def reset_deck_progress_async(db: AsyncSession, *, slug: str, deck_id: str, user_id: str) -> dict:
+    return await db.run_sync(lambda sync_db: reset_deck_progress(sync_db, slug=slug, deck_id=deck_id, user_id=user_id))
+
+
+async def update_deck_stats_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    deck_id: str,
+    user_id: str,
+    in_progress: int,
+    completed: int,
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: update_deck_stats(
+            sync_db, slug=slug, deck_id=deck_id, user_id=user_id, in_progress=in_progress, completed=completed
+        )
+    )

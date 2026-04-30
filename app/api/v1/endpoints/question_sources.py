@@ -1,10 +1,12 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import get_current_admin, require_course_access
-from app.db.session import get_db
+from app.db.session import get_async_db, get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
@@ -20,6 +22,10 @@ from app.schemas.question_source import (
 from app.utils.pagination import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_slice
 from app.services.question_source_facade import question_source_service
 
+# Keep dependency overrides stable for existing tests/clients while async service
+# migration happens under the hood.
+get_async_db = get_db
+
 user_router = APIRouter(tags=["Question Sources"])
 admin_router = APIRouter(tags=["Admin — Question Sources"])
 router = APIRouter()
@@ -28,20 +34,32 @@ router = APIRouter()
 # endpoint-level symbols directly.
 service_list_subjects = question_source_service.list_subjects
 service_list_subjects_page = question_source_service.list_subjects_page
+service_list_subjects_page_async = question_source_service.list_subjects_page_async
 get_admin_subject_sources = question_source_service.get_admin_subject_sources
 get_admin_subject_sources_page = question_source_service.get_admin_subject_sources_page
+get_admin_subject_sources_page_async = question_source_service.get_admin_subject_sources_page_async
 get_source_state = question_source_service.get_source_state
+get_source_state_async = question_source_service.get_source_state_async
 get_subject_bank = question_source_service.get_subject_bank
 get_subject_bank_page = question_source_service.get_subject_bank_page
+get_subject_bank_page_async = question_source_service.get_subject_bank_page_async
 get_subject_bank_progress = question_source_service.get_subject_bank_progress
+get_subject_bank_progress_async = question_source_service.get_subject_bank_progress_async
 get_subject_decks = question_source_service.get_subject_decks
+get_subject_decks_async = question_source_service.get_subject_decks_async
 get_deck_questions = question_source_service.get_deck_questions
 get_deck_questions_page = question_source_service.get_deck_questions_page
+get_deck_questions_page_async = question_source_service.get_deck_questions_page_async
 check_deck_answer = question_source_service.check_deck_answer
+check_deck_answer_async = question_source_service.check_deck_answer_async
 update_deck_progress = question_source_service.update_deck_progress
+update_deck_progress_async = question_source_service.update_deck_progress_async
 get_deck_progress = question_source_service.get_deck_progress
+get_deck_progress_async = question_source_service.get_deck_progress_async
 reset_deck_progress = question_source_service.reset_deck_progress
+reset_deck_progress_async = question_source_service.reset_deck_progress_async
 update_deck_stats = question_source_service.update_deck_stats
+update_deck_stats_async = question_source_service.update_deck_stats_async
 upsert_source_from_markdown_by_slug = question_source_service.upsert_source_from_markdown_by_slug
 delete_source = question_source_service.delete_source
 
@@ -52,12 +70,16 @@ delete_source = question_source_service.delete_source
     summary="List subjects (paginated)",
     description=f"Default `page={DEFAULT_PAGE}`, `limit={DEFAULT_PAGE_SIZE}` (max `limit={MAX_PAGE_SIZE}`).",
 )
-def list_subjects(
-    db: Session = Depends(get_db),
+async def list_subjects(
+    db: Session = Depends(get_async_db),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    return success_response(data=service_list_subjects_page(db, page=page, limit=limit))
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await service_list_subjects_page_async(db, page=page, limit=limit)
+    else:
+        data = service_list_subjects_page(db, page=page, limit=limit)
+    return success_response(data=data)
 
 
 @admin_router.get(
@@ -65,13 +87,17 @@ def list_subjects(
     response_model=ApiResponse[Any],
     summary="Admin: list subjects (paginated)",
 )
-def admin_list_subjects(
-    db: Session = Depends(get_db),
+async def admin_list_subjects(
+    db: Session = Depends(get_async_db),
     _: User = Depends(get_current_admin),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    return success_response(data=service_list_subjects_page(db, page=page, limit=limit))
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await service_list_subjects_page_async(db, page=page, limit=limit)
+    else:
+        data = service_list_subjects_page(db, page=page, limit=limit)
+    return success_response(data=data)
 
 
 @admin_router.get(
@@ -79,19 +105,26 @@ def admin_list_subjects(
     response_model=ApiResponse[Any],
     summary="Admin: list sources for subject (paginated)",
 )
-def admin_subject_sources(
+async def admin_subject_sources(
     slug: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     _: User = Depends(get_current_admin),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    return success_response(data=get_admin_subject_sources_page(db, slug, page=page, limit=limit))
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await get_admin_subject_sources_page_async(db, slug, page=page, limit=limit)
+    else:
+        data = get_admin_subject_sources_page(db, slug, page=page, limit=limit)
+    return success_response(data=data)
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])
-def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(require_course_access)):
-    data = get_source_state(db, slug)
+async def source_state(slug: str, db: Session = Depends(get_async_db), _: User = Depends(require_course_access)):
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await get_source_state_async(db, slug)
+    else:
+        data = get_source_state(db, slug)
     return success_response(data=data)
 
 
@@ -100,15 +133,19 @@ def source_state(slug: str, db: Session = Depends(get_db), _: User = Depends(req
     response_model=ApiResponse[Any],
     summary="Subject bank questions (paginated)",
 )
-def subject_bank(
+async def subject_bank(
     slug: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    paginated = get_subject_bank_page(db, slug, page=page, limit=limit)
-    progress = get_subject_bank_progress(db, slug=slug, user_id=current_user.id)
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        paginated = await get_subject_bank_page_async(db, slug, page=page, limit=limit)
+        progress = await get_subject_bank_progress_async(db, slug=slug, user_id=current_user.id)
+    else:
+        paginated = get_subject_bank_page(db, slug, page=page, limit=limit)
+        progress = get_subject_bank_progress(db, slug=slug, user_id=current_user.id)
     return success_response(data={**paginated, "progress": progress})
 
 
@@ -118,14 +155,17 @@ def subject_bank(
     summary="List decks for subject (paginated)",
     description=f"Default `page={DEFAULT_PAGE}`, `limit={DEFAULT_PAGE_SIZE}`.",
 )
-def subject_decks(
+async def subject_decks(
     slug: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    full = get_subject_decks(db, slug, user_id=current_user.id)
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        full = await get_subject_decks_async(db, slug, user_id=current_user.id)
+    else:
+        full = get_subject_decks(db, slug, user_id=current_user.id)
     return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
@@ -134,15 +174,18 @@ def subject_decks(
     response_model=ApiResponse[Any],
     summary="List deck questions (paginated)",
 )
-def subject_deck_questions(
+async def subject_deck_questions(
     slug: str,
     deck_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     _: User = Depends(require_course_access),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=1, ge=1, le=50),
 ):
-    data = get_deck_questions_page(db, slug, deck_id, page=page, limit=limit)
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await get_deck_questions_page_async(db, slug, deck_id, page=page, limit=limit)
+    else:
+        data = get_deck_questions_page(db, slug, deck_id, page=page, limit=limit)
     return success_response(data=data)
 
 
@@ -150,91 +193,116 @@ def subject_deck_questions(
     "/subjects/{slug}/decks/{deck_id}/questions/{question_id}/check",
     response_model=ApiResponse[AnswerCheckResponse],
 )
-def subject_deck_question_check(
+async def subject_deck_question_check(
     slug: str,
     deck_id: str,
     question_id: int = Path(ge=1),
     payload: AnswerCheckRequest = ...,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     _: User = Depends(require_course_access),
 ):
-    data = check_deck_answer(
-        db,
-        slug=slug,
-        deck_id=deck_id,
-        question_id=question_id,
-        selected_answer=payload.selectedAnswer,
-    )
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await check_deck_answer_async(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            question_id=question_id,
+            selected_answer=payload.selectedAnswer,
+        )
+    else:
+        data = check_deck_answer(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            question_id=question_id,
+            selected_answer=payload.selectedAnswer,
+        )
     return success_response(data=data, message="Checked answer successfully")
 
 
 @user_router.put("/subjects/{slug}/decks/{deck_id}/progress", response_model=ApiResponse[dict])
-def subject_deck_progress_update(
+async def subject_deck_progress_update(
     slug: str,
     deck_id: str,
     payload: DeckProgressUpdateRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
 ):
-    data = update_deck_progress(
-        db,
-        slug=slug,
-        deck_id=deck_id,
-        user_id=current_user.id,
-        current_question=payload.currentQuestion,
-        attempted_question_ordinals=payload.attemptedQuestionOrdinals,
-    )
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await update_deck_progress_async(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            user_id=current_user.id,
+            current_question=payload.currentQuestion,
+            attempted_question_ordinals=payload.attemptedQuestionOrdinals,
+        )
+    else:
+        data = update_deck_progress(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            user_id=current_user.id,
+            current_question=payload.currentQuestion,
+            attempted_question_ordinals=payload.attemptedQuestionOrdinals,
+        )
     return success_response(data=data, message="Deck progress updated successfully")
 
 
 @user_router.get("/subjects/{slug}/decks/{deck_id}/progress", response_model=ApiResponse[DeckProgressResponse])
-def subject_deck_progress_get(
+async def subject_deck_progress_get(
     slug: str,
     deck_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
 ):
-    data = get_deck_progress(
-        db,
-        slug=slug,
-        deck_id=deck_id,
-        user_id=current_user.id,
-    )
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await get_deck_progress_async(db, slug=slug, deck_id=deck_id, user_id=current_user.id)
+    else:
+        data = get_deck_progress(db, slug=slug, deck_id=deck_id, user_id=current_user.id)
     return success_response(data=data)
 
 
 @user_router.post("/subjects/{slug}/decks/{deck_id}/progress/reset", response_model=ApiResponse[dict])
-def subject_deck_progress_reset(
+async def subject_deck_progress_reset(
     slug: str,
     deck_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
 ):
-    data = reset_deck_progress(
-        db,
-        slug=slug,
-        deck_id=deck_id,
-        user_id=current_user.id,
-    )
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await reset_deck_progress_async(db, slug=slug, deck_id=deck_id, user_id=current_user.id)
+    else:
+        data = reset_deck_progress(db, slug=slug, deck_id=deck_id, user_id=current_user.id)
     return success_response(data=data, message="Deck progress reset successfully")
 
 
 @user_router.put("/subjects/{slug}/decks/{deck_id}/stats", response_model=ApiResponse[dict])
-def subject_deck_stats_update(
+async def subject_deck_stats_update(
     slug: str,
     deck_id: str,
     payload: DeckStatsUpdateRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
     current_user: User = Depends(require_course_access),
 ):
-    data = update_deck_stats(
-        db,
-        slug=slug,
-        deck_id=deck_id,
-        user_id=current_user.id,
-        in_progress=payload.inProgress,
-        completed=payload.completed,
-    )
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await update_deck_stats_async(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            user_id=current_user.id,
+            in_progress=payload.inProgress,
+            completed=payload.completed,
+        )
+    else:
+        data = update_deck_stats(
+            db,
+            slug=slug,
+            deck_id=deck_id,
+            user_id=current_user.id,
+            in_progress=payload.inProgress,
+            completed=payload.completed,
+        )
     return success_response(data=data, message="Deck stats updated successfully")
 
 

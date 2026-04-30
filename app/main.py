@@ -15,10 +15,13 @@ from fastapi.responses import JSONResponse
 from app.api.v1.api import api_router
 from app.bootstrap import run_startup_bootstrap
 from app.core.config import settings
+from app.db.session import AsyncSessionLocal
 from app.middleware.docs_basic_auth import DocsBasicAuthMiddleware
 from app.middleware.performance import add_request_timing_header
+from app.middleware.performance_metrics import performance_metrics_middleware
 from app.db.session import SessionLocal
 from app.schemas.api_response import error_response
+from app.services.cache_warming_service import cache_warming_service
 
 
 @asynccontextmanager
@@ -35,6 +38,10 @@ async def lifespan(_: FastAPI):
             raise
         finally:
             db.close()
+
+    if AsyncSessionLocal is not None:
+        async with AsyncSessionLocal() as async_db:
+            await cache_warming_service.warm_subjects_cache(async_db)
     yield
 
 app = FastAPI(
@@ -62,6 +69,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.middleware("http")(add_request_timing_header)
+app.middleware("http")(performance_metrics_middleware)
 
 if settings.docs_basic_auth_enabled:
     app.add_middleware(
