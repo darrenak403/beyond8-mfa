@@ -122,3 +122,25 @@ class AnswerCheckResponse(BaseModel):
     selectedAnswer: str
     correctAnswers: list[str]
     isCorrect: bool
+
+
+class MergeBankPreviewResponse(BaseModel):
+    """Dry-run merge of a deck source into the aggregated bank (no DB writes)."""
+
+    subjectSlug: str
+    deckSourceId: str
+    added: int
+    skippedDuplicate: int
+    bankQuestionCountAfter: int
+    wouldCreateBank: bool = False
+
+
+class MergeIntoBankResponse(BaseModel):
+    """Committed merge of deck questions into `cau-hoi-tong-hop` source for the subject."""
+
+    subjectSlug: str
+    bankSourceId: str
+    deckSourceId: str
+    added: int
+    skippedDuplicate: int
+    bankQuestionCount: int

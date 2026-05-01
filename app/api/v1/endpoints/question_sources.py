@@ -15,6 +15,8 @@ from app.schemas.question_source import (
     DeckProgressUpdateRequest,
     DeckProgressResponse,
     DeckStatsUpdateRequest,
+    MergeBankPreviewResponse,
+    MergeIntoBankResponse,
     SourceStateQuestion,
     SourceStateResponse,
     UploadSourceResponse,
@@ -62,6 +64,8 @@ update_deck_stats = question_source_service.update_deck_stats
 update_deck_stats_async = question_source_service.update_deck_stats_async
 upsert_source_from_markdown_by_slug = question_source_service.upsert_source_from_markdown_by_slug
 delete_source = question_source_service.delete_source
+merge_deck_into_aggregated_bank_preview = question_source_service.merge_deck_into_aggregated_bank_preview
+merge_deck_into_aggregated_bank = question_source_service.merge_deck_into_aggregated_bank
 
 
 @user_router.get(
@@ -304,6 +308,41 @@ async def subject_deck_stats_update(
             completed=payload.completed,
         )
     return success_response(data=data, message="Deck stats updated successfully")
+
+
+@admin_router.get(
+    "/admin/question-sources/subjects/{slug}/sources/{deck_source_id}/merge-into-bank/preview",
+    response_model=ApiResponse[MergeBankPreviewResponse],
+    summary="Admin: preview merge deck into aggregated bank (dry-run, no writes)",
+)
+def admin_merge_deck_into_bank_preview(
+    slug: str,
+    deck_source_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    data = merge_deck_into_aggregated_bank_preview(db, slug=slug, deck_source_id=deck_source_id)
+    return success_response(data=data, message="Merge preview computed successfully")
+
+
+@admin_router.post(
+    "/admin/question-sources/subjects/{slug}/sources/{deck_source_id}/merge-into-bank",
+    response_model=ApiResponse[MergeIntoBankResponse],
+    summary="Admin: merge deck questions into aggregated bank (cau-hoi-tong-hop)",
+)
+def admin_merge_deck_into_bank(
+    slug: str,
+    deck_source_id: str,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    data = merge_deck_into_aggregated_bank(
+        db,
+        slug=slug,
+        deck_source_id=deck_source_id,
+        uploader_id=current_admin.id,
+    )
+    return success_response(data=data, message="Deck merged into aggregated bank successfully")
 
 
 @admin_router.post(

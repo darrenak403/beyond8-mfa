@@ -243,6 +243,7 @@ class CRUDQuestionSource:
                 Question.answer_text,
                 Question.answers_json,
                 Question.image_url,
+                Question.normalized_hash,
             )
             .where(Question.source_id == source_id)
             .order_by(Question.ordinal.asc())
@@ -255,6 +256,7 @@ class CRUDQuestionSource:
                 "answer": row.answer_text,
                 "answers": row.answers_json or [],
                 "imageUrl": row.image_url,
+                "normalized_hash": row.normalized_hash,
             }
             for row in rows
         ]

@@ -165,5 +165,13 @@ class QuestionSourceService:
     def delete_source(self, db: Session, *, slug: str, source_id: str):
         return legacy.delete_source(db, slug=slug, source_id=source_id)
 
+    def merge_deck_into_aggregated_bank_preview(self, db: Session, *, slug: str, deck_source_id: str):
+        return legacy.merge_deck_into_aggregated_bank_preview(db, slug=slug, deck_source_id=deck_source_id)
+
+    def merge_deck_into_aggregated_bank(self, db: Session, *, slug: str, deck_source_id: str, uploader_id: str | None):
+        return legacy.merge_deck_into_aggregated_bank(
+            db, slug=slug, deck_source_id=deck_source_id, uploader_id=uploader_id
+        )
+
 
 question_source_service = QuestionSourceService()

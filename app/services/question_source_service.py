@@ -1259,6 +1259,142 @@ def delete_source(db: Session, *, slug: str, source_id: str) -> dict:
     }
 
 
+def _question_row_to_replace_payload(item: dict, ordinal: int) -> dict:
+    return {
+        "ordinal": ordinal,
+        "stem": item["stem"],
+        "options": item["options"],
+        "answers": item.get("answers") or [],
+        "answer_text": item.get("answer_text") or item.get("answer") or "",
+        "normalized_hash": item["normalized_hash"],
+    }
+
+
+def _compute_merge_deck_into_bank_payload(
+    bank_questions: list[dict],
+    deck_questions: list[dict],
+) -> tuple[list[dict], int, int]:
+    """Return (replace_payload, added_count, skipped_duplicate_count)."""
+    seen: set[str] = set()
+    merged_rows: list[dict] = []
+    for q in bank_questions:
+        h = q.get("normalized_hash")
+        if not h:
+            continue
+        if h not in seen:
+            seen.add(h)
+            merged_rows.append(q)
+    added = 0
+    skipped = 0
+    for q in deck_questions:
+        h = q.get("normalized_hash")
+        if not h:
+            continue
+        if h in seen:
+            skipped += 1
+            continue
+        seen.add(h)
+        merged_rows.append(q)
+        added += 1
+    replace_payload = [_question_row_to_replace_payload(row, i) for i, row in enumerate(merged_rows, start=1)]
+    return replace_payload, added, skipped
+
+
+def _get_aggregated_bank_source(db: Session, subject_id: str):
+    sources = crud_question_source.list_sources_by_subject(db, subject_id)
+    return next((s for s in sources if _is_aggregated_bank_filename(s.file_name)), None)
+
+
+def _ensure_aggregated_bank_source(db: Session, *, subject_id: str, uploader_id: str | None):
+    existing = _get_aggregated_bank_source(db, subject_id)
+    if existing is not None:
+        return existing
+    seed = b""
+    checksum = f"sha256:{hashlib.sha256(seed).hexdigest()}"
+    bank = crud_question_source.create_source(
+        db,
+        subject_id=subject_id,
+        exam_code="AGG-BANK",
+        file_name="cau-hoi-tong-hop.md",
+        checksum_sha256=checksum,
+        uploaded_by=uploader_id,
+        warnings=[],
+        question_count=0,
+    )
+    crud_question_source.replace_source_questions(db, source_id=bank.id, payload=[])
+    db.flush()
+    return bank
+
+
+def _validate_deck_for_merge(db: Session, *, subject, deck_source_id: str):
+    deck = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_source_id)
+    if deck is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SOURCE_NOT_FOUND", "Deck source not found for subject.")
+    if _is_aggregated_bank_filename(deck.file_name):
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "CANNOT_MERGE_AGGREGATED_SOURCE",
+            "Cannot merge the aggregated bank source into itself.",
+        )
+    return deck
+
+
+def merge_deck_into_aggregated_bank_preview(db: Session, *, slug: str, deck_source_id: str) -> dict:
+    normalized_slug = slug.strip().lower()
+    if not normalized_slug:
+        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_SUBJECT_SLUG", "Subject slug is required.")
+    subject = crud_question_source.get_subject_by_slug(db, normalized_slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    _validate_deck_for_merge(db, subject=subject, deck_source_id=deck_source_id)
+    bank = _get_aggregated_bank_source(db, subject.id)
+    bank_questions = crud_question_source.list_source_questions_payload(db, bank.id) if bank is not None else []
+    deck_questions = crud_question_source.list_source_questions_payload(db, deck_source_id)
+    replace_payload, added, skipped = _compute_merge_deck_into_bank_payload(bank_questions, deck_questions)
+    return {
+        "subjectSlug": subject.slug,
+        "deckSourceId": deck_source_id,
+        "added": added,
+        "skippedDuplicate": skipped,
+        "bankQuestionCountAfter": len(replace_payload),
+        "wouldCreateBank": bank is None,
+    }
+
+
+def merge_deck_into_aggregated_bank(
+    db: Session,
+    *,
+    slug: str,
+    deck_source_id: str,
+    uploader_id: str | None,
+) -> dict:
+    normalized_slug = slug.strip().lower()
+    if not normalized_slug:
+        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_SUBJECT_SLUG", "Subject slug is required.")
+    subject = crud_question_source.get_subject_by_slug(db, normalized_slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    _validate_deck_for_merge(db, subject=subject, deck_source_id=deck_source_id)
+    bank = _ensure_aggregated_bank_source(db, subject_id=subject.id, uploader_id=uploader_id)
+    bank_questions = crud_question_source.list_source_questions_payload(db, bank.id)
+    deck_questions = crud_question_source.list_source_questions_payload(db, deck_source_id)
+    replace_payload, added, skipped = _compute_merge_deck_into_bank_payload(bank_questions, deck_questions)
+    crud_question_source.replace_source_questions(db, source_id=bank.id, payload=replace_payload)
+    bank.question_count = len(replace_payload)
+    db.add(bank)
+    db.flush()
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
+    return {
+        "subjectSlug": subject.slug,
+        "bankSourceId": bank.id,
+        "deckSourceId": deck_source_id,
+        "added": added,
+        "skippedDuplicate": skipped,
+        "bankQuestionCount": len(replace_payload),
+    }
+
+
 async def list_subjects_page_async(db: AsyncSession, *, page: int, limit: int) -> dict:
     return await db.run_sync(lambda sync_db: list_subjects_page(sync_db, page=page, limit=limit))
 

@@ -12,6 +12,8 @@ from app.services.question_source_service import (
     get_deck_progress,
     get_subject_decks,
     ingest_markdown_file,
+    merge_deck_into_aggregated_bank,
+    merge_deck_into_aggregated_bank_preview,
     parse_questions,
     reset_deck_progress,
     update_deck_progress,
@@ -282,3 +284,154 @@ def test_reset_deck_progress_resets_state_but_keeps_learned_count(monkeypatch) -
     assert result["stats"]["completionRatePercent"] == 0
     assert result["stats"]["learnedCount"] == 3
     fake_crud.upsert_source_user_stats.assert_called_once()
+
+
+MLN111_GOLD_SNIPPET = """1. Chọn phương án trả lời phù hợp nhất: "Sự ra đời của Triết học Mác là một quá trình ..........". Từ còn thiếu trong chỗ trống là gì?
+
+A. Tất yếu khách quan
+
+B. Thiết yếu
+
+C. "nhiều hơn và đồ sộ hơn" ... "thế hệ trước"
+
+D. Đấu tranh của giai cấp. Tư còn thiếu
+
+Đáp án: A
+
+2. Ai được xem là nhà triết học thiên tài vào thế kỷ XVIII - XIX?
+
+A. Heraclitus
+
+B. Immanuel Kant
+
+C. Socrates
+
+D. Bruno Fesnades
+
+Đáp án: B
+
+3. Thuyết có thể biết còn gọi là gì?
+
+A. Thuyết nhận biết
+
+B. Thuyết khả tri
+
+C. Thuyết bất khả tri
+
+D. Thuyết nhận biết luận
+
+Đáp án: B
+"""
+
+
+def test_parse_questions_mln111_gold_numbered_format() -> None:
+    """Gold snippet from `source/mln111/MLN111 - FA 2024 - RE (done).md` — stems, options, answers."""
+    questions, warnings = parse_questions(MLN111_GOLD_SNIPPET)
+    assert len(questions) == 3
+    assert "Triết học Mác" in questions[0]["stem"]
+    assert questions[0]["answer_text"] == "A"
+    assert len(questions[0]["options"]) == 4
+    assert questions[0]["options"][0]["label"] == "A"
+    assert questions[1]["stem"].startswith("Ai được xem là nhà triết học")
+    assert any("Immanuel Kant" in o["text"] for o in questions[1]["options"])
+    assert questions[1]["answer_text"] == "B"
+    assert "Thuyết có thể biết" in questions[2]["stem"]
+    assert questions[2]["answer_text"] == "B"
+    assert all("normalized_hash" in q for q in questions)
+    assert warnings == []
+
+
+def test_merge_deck_into_aggregated_bank_preview_dedupes(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    bank = SimpleNamespace(id="bank-1", file_name="cau-hoi-tong-hop.md")
+    deck = SimpleNamespace(id="deck-1", file_name="MLN111 - FA 2024 - FE.md")
+    h_shared = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    h_new = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    bank_q = [
+        {
+            "stem": "Existing",
+            "options": [{"label": "A", "text": "x"}],
+            "answer": "A",
+            "answers": ["A"],
+            "normalized_hash": h_shared,
+        },
+    ]
+    deck_q = [
+        {
+            "stem": "Dup",
+            "options": [{"label": "A", "text": "y"}],
+            "answer": "A",
+            "answers": ["A"],
+            "normalized_hash": h_shared,
+        },
+        {
+            "stem": "New Q",
+            "options": [{"label": "B", "text": "z"}],
+            "answer": "B",
+            "answers": ["B"],
+            "normalized_hash": h_new,
+        },
+    ]
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    fake_crud.list_sources_by_subject.return_value = [bank, deck]
+
+    def payload_side_effect(_db, sid: str):
+        if sid == "bank-1":
+            return bank_q
+        if sid == "deck-1":
+            return deck_q
+        return []
+
+    fake_crud.list_source_questions_payload.side_effect = payload_side_effect
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    out = merge_deck_into_aggregated_bank_preview(Mock(), slug="mln111", deck_source_id="deck-1")
+    assert out["added"] == 1
+    assert out["skippedDuplicate"] == 1
+    assert out["bankQuestionCountAfter"] == 2
+    assert out["wouldCreateBank"] is False
+
+
+def test_merge_deck_into_aggregated_bank_creates_bank_when_absent(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="MLN111 - FA 2024 - FE.md")
+    new_bank = SimpleNamespace(id="bank-new", file_name="cau-hoi-tong-hop.md", question_count=0)
+    deck_q = [
+        {
+            "stem": "Only deck",
+            "options": [{"label": "A", "text": "a"}],
+            "answer": "A",
+            "answers": ["A"],
+            "normalized_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        },
+    ]
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    fake_crud.list_sources_by_subject.return_value = [deck]
+    fake_crud.create_source.return_value = new_bank
+
+    def payload_side_effect(_db, sid: str):
+        if sid == "bank-new":
+            return []
+        if sid == "deck-1":
+            return deck_q
+        return []
+
+    fake_crud.list_source_questions_payload.side_effect = payload_side_effect
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    out = merge_deck_into_aggregated_bank(Mock(), slug="mln111", deck_source_id="deck-1", uploader_id="admin-1")
+    assert out["bankSourceId"] == "bank-new"
+    assert out["added"] == 1
+    assert out["skippedDuplicate"] == 0
+    assert out["bankQuestionCount"] == 1
+    fake_crud.create_source.assert_called_once()
+    assert fake_crud.replace_source_questions.call_count == 2
+    last_kw = fake_crud.replace_source_questions.call_args_list[-1].kwargs
+    assert last_kw["source_id"] == "bank-new"
+    assert len(last_kw["payload"]) == 1
+    assert last_kw["payload"][0]["ordinal"] == 1

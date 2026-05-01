@@ -1,0 +1,521 @@
+1. What is a program?
+
+A. An initiative set up by management
+
+B. A means to gain benefits and control of related projects
+
+C. A group of unrelated projects managed in a coordinated way
+
+D. A government regulation
+
+Đáp án: B
+
+2. We discussed three types of matrix organizations, the not mentioned one is:
+
+A. Medium Matrix
+
+B. Weak Matrix
+
+C. Balanced Matrix
+
+D. Strong Matrix
+
+Đáp án: A
+
+3. A project manager's primary responsibility is to deliver the product of the project within project constraints. Actions taken and changes made to the benefit of one constraint could negatively affect another. Which of the following best describes the major constraints on a project?
+
+A. Scope, number of resources, and cost
+
+B. Scope, cost, and schedule
+
+C. Scope, schedule, cost, quality, risk, resources, and customer satisfaction
+
+D. Schedule, cost, and number of changes
+
+Đáp án: C
+
+4. A project management plan should be realistic in order to be used to manage the project. Which of the following is the best method to achieve a realistic project management plan?
+
+A. The sponsor creates the project management plan based on input from the project manager
+
+B. The functional manager creates the project management plan based on input from the project manager
+
+C. The project manager creates the project management plan based on input from senior management
+
+D. The project manager creates the project management plan based on input from the team
+
+Đáp án: D
+
+5. As discussed in the Project Management course, The PMBOK® Guide describes 10 Project Management Knowledge Areas. Identify 3 out of the 10:
+
+A. Stakeholder, Communication, Human Resource
+
+B. Stakeholder, Vendor, Customer
+
+C. Risk, Human Resource, Vendor
+
+D. Procurement, Communication, Customer
+
+Đáp án: A
+
+6. A project is plagued by requested changes to the project charter. Who has the primary responsibility to decide if these changes are necessary?
+
+A. The project manager
+
+B. The project team
+
+C. The sponsor
+
+D. The stakeholders
+
+Đáp án: C
+
+7. Which one is not the causes of scope creep?
+
+A. Poorly defined objectives
+
+B. Lack of defined change control process
+
+C. Changing stakeholder perspectives
+
+D. Increased understanding of what is takes to get it done
+
+E. Ability to say "NO"
+
+Đáp án: E
+
+8. True or False: Unregulated changes allow for innovation and flexibility. Regulating changes causes a lack of creativity.
+
+A. True
+
+B. False
+
+Đáp án: B
+
+9. A good change process will:
+
+A. Require the same level of approval for all changes.
+
+B. Have change thresholds that are appropriate for the type of change.
+
+C. Be very complex in order to discourage changes.
+
+D. Allow the project manager to approve all changes.
+
+Đáp án: B
+
+10. Company procedures require the creation of a lessons learned register. Which of the following is the best use of lessons learned?
+
+A. Historical records for future projects
+
+B. Planning record for the current project
+
+C. Informing the team about what the project manager has done
+
+D. Informing the team about the project management plan
+
+Đáp án: A
+
+11. True or False: Project scope statement is better to define inclusions (in-scope items) than identify only exclusions (out of scope items).
+
+A. False
+
+B. True
+
+Đáp án: B
+
+12. As you plan your project, you do so thinking that all team members will be assigned to your project for at least 50% of their available time. This is an example of:
+
+A. Poor planning.
+
+B. Wishful thinking.
+
+C. A project demand.
+
+D. An assumption.
+
+Đáp án: D
+
+13. True or False: When creating the WBS of the project, Project Manager decided to not include his management tasks into WBS as those tasks will be done by him and he knows well what he has to do in the project.
+
+A. False
+
+B. True
+
+Đáp án: A
+
+14. To manage a project effectively, work should be broken down into small pieces. Which of the following does not describe how far to decompose the work?
+
+A. Until it has a meaningful conclusion
+
+B. Until it cannot be logically subdivided further
+
+C. Until it can be done by one person
+
+D. Until it can be realistically estimated
+
+Đáp án: C
+
+15. All of the following are inputs to estimating activity durations except:
+
+A. Organizational process assets
+
+B. Activity list and activity attributes
+
+C. Requirements specifications
+
+D. Resource calendars and scope statement
+
+Đáp án: C
+
+16. True or False: Project Manager should consider using milestones for high level reporting.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+17. Your team member informs you that the test system must be refreshed with your test data before testing can begin. This dependency is:
+
+A. Discretionary
+
+B. Internal
+
+C. Mandatory
+
+D. External
+
+Đáp án: C
+
+18. True or False: If "develop online modules" needs to finish before "review online modules" can finish, that is called a finish to finish relationship.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+19. True or False: The start time of the project (the early start of the first activity) can be "zero" or "one" depending on your chosen convention.
+
+A. False
+
+B. True
+
+Đáp án: B
+
+20. The following table is an activity list that includes the duration and predecessor for a series of project activities. What is the duration of the critical path?
+
+A. 13
+
+B. 9
+
+C. 11
+
+D. 14
+
+Đáp án: D
+
+21. True or False: The Forward Pass is used through the activities to determine the total duration of the project.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+22. True or False: The Crashing is the approach to add more resources (labor, overtime, etc.) into the activities to reduce their durations.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+23. Which of the following is NOT the advantages of top-down estimating?
+
+A. Quick
+
+B. Activities do not need to be identified
+
+C. Less costly to create
+
+D. More accurate
+
+Đáp án: D
+
+24. When you have good historical information which can be used in a reliable formula or model, you will probably use:
+
+A. Parametric estimating
+
+B. Exact estimating
+
+C. Analogous estimating
+
+D. Bottoms up estimating
+
+Đáp án: A
+
+25. True or False: Using top-down estimating techniques when activity durations or resource quantities are uncertain.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+26. True or False: The Cost Baseline is equal to the total of Activity Cost Estimates.
+
+A. True
+
+B. False
+
+Đáp án: B
+
+27. True or False: Earned value integrates quality, scope and schedule and uses monetary values to assess project status.
+
+A. False
+
+B. True
+
+Đáp án: A
+
+28. The discipline of quality management complements the discipline of project management. Both recognize all but one of the following:
+
+A. Customer satisfaction
+
+B. Prevention over inspection
+
+C. One-time improvement
+
+D. Management responsibility
+
+Đáp án: C
+
+29. True or False: Project quality focuses on the project management processes used to meet project objectives.
+
+A. False
+
+B. True
+
+Đáp án: B
+
+30. True or False: The Process Improvement Plan is a component of the project management plan that details how project management and development processes are to be analyzed in order to identify how to reduce their value.
+
+A. False
+
+B. True
+
+Đáp án: A
+
+31. True or False: Your role as the project manager during quality assurance is to work with a quality assurance manager who will create a test plan and test cases which will be used to test the product you are creating in order to prevent defects from reaching your customer.
+
+A. False
+
+B. True
+
+Đáp án: A
+
+32. True or False: Performing quality control within the context of a project involves taking actions to eliminate causes of unsatisfactory project performance.
+
+A. False
+
+B. True
+
+Đáp án: B
+
+33. True or False: Project Human Resource Management includes the processes that define the tasks and assign them to suitable resources, and motivate project team to complete the tasks.
+
+A. False
+
+B. True
+
+Đáp án: B
+
+34. Which one of these should be the view of conflict?
+
+A. Caused by troublemakers
+
+B. Often beneficial
+
+C. Should be avoided
+
+D. Must be suppressed
+
+Đáp án: B
+
+35. Two team members disagree on how to solve a project issue. They express their disagreement and then engage in a professional debate. This is an example of:
+
+A. Unrealistic conflict.
+
+B. Unproductive conflict.
+
+C. Healthy conflict.
+
+D. Unhealthy conflict.
+
+Đáp án: C
+
+36. You and another project manager disagree over whether a team member should work on your team or on her team. You decide that the team member can work for the other project manager and suppose that the other project manager will support you in the future. The truth is you wanted this person working on your project. The conflict resolution approach you have used is:
+
+A. Compromising
+
+B. Smoothing
+
+C. Confronting
+
+D. Forcing
+
+Đáp án: B
+
+37. When you use the RACI or Responsible, Accountable, Consult, Inform version of the RAM, those informed persons are:
+
+A. Providing subject matter expertise
+
+B. Making the final decision
+
+C. Being kept updated about project progress.
+
+D. Completing the work
+
+Đáp án: C
+
+38. True or False: Effective project communication management creates a bridge between stakeholders based on a shared understanding of the project and the ongoing sharing of information needed for its success.
+
+A. True
+
+B. False
+
+Đáp án: A
+
+39. Which of the following is NOT likely to be documented in a communications management plan?
+
+A. Person responsible for tracking risk events
+
+B. Time frame and frequency of communication
+
+C. How information will be communicated
+
+D. What information will be communicated
+
+Đáp án: A
+
+40. Lateral communication is communication to/from:
+
+A. Your subordinates.
+
+B. Your functional management.
+
+C. Your line management.
+
+D. Your peers.
+
+Đáp án: D
+
+41. True or False: The sender is responsible to provide feedback to acknowledge that the sent message has been received and understood. The receiver is responsible to make sure the sent message is clear, complete, and appropriate.
+
+A. True
+
+B. False
+
+Đáp án: B
+
+42. Which one is the correct matching of report types and the descriptions? Report types: (1) Status report (2) Progress report (3) Forecasting report Descriptions: (a) Predicting future project progress and completion. (b) Describing what the project team has accomplished or what is completed versus what is in progress. (c) Describing where the project now stands.
+
+A. (1)&(a), (2)&(b), (3)&(c)
+
+B. (1)&(a), (2)&(c), (3)&(b)
+
+C. (1)&(b), (2)&(c), (3)&(a)
+
+D. (1)&(b), (2)&(a), (3)&(c)
+
+E. (1)&(c), (2)&(a), (3)&(b)
+
+F. (1)&(c), (2)&(b), (3)&(a)
+
+Đáp án: F
+
+43. True or False: The primary goal of project risk management is to maximize the likelihood and impact of negative events or threats and to minimize the likelihood and impact of positive events or opportunities.
+
+A. False
+
+B. True
+
+Đáp án: A
+
+44. All of the following tools and techniques can be valuable in risk identification, EXCEPT:
+
+A. SWOT (Strengths, Opportunities, Weaknesses, Threats)
+
+B. Reviewing and evaluating project documents
+
+C. Reviewing similar projects executed in past
+
+D. EVM (Earned Value Management)
+
+Đáp án: D
+
+45. If the response you choose is to accept a risk this means that:
+
+A. You actively do not consider the risk but establish contingency plan.
+
+B. You change your plans so that you eliminate the risk.
+
+C. You change your plan so that another party will be responsible for the risk.
+
+D. You create your plan to reduce the probability and/or the impact of the risk.
+
+Đáp án: A
+
+46. True or False: When you choose to transfer your project risk to a third party, it will definitely rise to secondary risk.
+
+A. True
+
+B. False
+
+Đáp án: B
+
+47. Who is the stakeholder that has the most influence on your current running project?
+
+A. Project Team
+
+B. Investors
+
+C. Competitors
+
+D. Sponsor
+
+Đáp án: D
+
+48. One way to classify your stakeholders is to use the Power/Interest Grid. If a stakeholder is low interest / high power, what should the Project Manager do?
+
+A. Monitor
+
+B. Keep satisfied
+
+C. Manage closely
+
+D. Keep informed
+
+Đáp án: B
+
+49. You just came from a meeting with one of your project stakeholders, he knew about your project and also its potential impacts, and he always supported for the work and its outcomes. How would you classify him?
+
+A. Supportive
+
+B. Neutral
+
+C. Unaware
+
+D. Leading
+
+Đáp án: A
+
+50. True or False: The Project Manager is responsible for stakeholder expectations management.
+
+A. False
+
+B. True
+
+Đáp án: B
