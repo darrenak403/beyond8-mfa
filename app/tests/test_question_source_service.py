@@ -171,7 +171,9 @@ def test_ingest_markdown_file_persists_via_crud_path(monkeypatch) -> None:
 
     assert result["sourceId"] == "source-1"
     assert result["deduplicated"] is False
+    assert result["fileName"] == "PRN232 - SP 2025 - FE"
     fake_crud.create_source.assert_called_once()
+    assert fake_crud.create_source.call_args.kwargs["file_name"] == "PRN232 - SP 2025 - FE"
     fake_crud.replace_source_questions.assert_called_once()
 
 

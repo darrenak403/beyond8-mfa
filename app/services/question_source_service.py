@@ -57,7 +57,7 @@ def _subject_code_from_slug(subject_slug: str) -> str:
 
 
 def _stem_from_markdown_upload_filename(filename: str) -> str:
-    """Basename without trailing .md (case-insensitive); NFKC + strip. Used for exam_code + file_name on admin slug upload."""
+    """Basename without trailing .md (case-insensitive); NFKC + strip. Persist this as file_name for markdown uploads."""
     s = unicodedata.normalize("NFKC", (filename or "").strip())
     if len(s) >= 4 and s.lower().endswith(".md"):
         s = s[:-3]
@@ -230,6 +230,13 @@ def ingest_markdown_file(
     raw_bytes = file.file.read(_MAX_UPLOAD_BYTES + 1)
     if len(raw_bytes) > _MAX_UPLOAD_BYTES:
         raise _error(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", "File exceeds 5MB limit.")
+    stem = _stem_from_markdown_upload_filename(file.filename)
+    if not stem:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_UPLOAD_FILENAME",
+            "Filename must yield a non-empty label after removing .md.",
+        )
     metadata = detect_subject_and_exam_with_fallback(file.filename, subject_slug)
     checksum = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
     subject = crud_question_source.get_or_create_subject(
@@ -257,7 +264,7 @@ def ingest_markdown_file(
         db,
         subject_id=subject.id,
         exam_code=metadata["examCode"],
-        file_name=file.filename,
+        file_name=stem,
         checksum_sha256=checksum,
         uploaded_by=uploader_id,
         warnings=warnings,
@@ -273,7 +280,7 @@ def ingest_markdown_file(
         "subjectSlug": metadata["subjectSlug"],
         "subjectCode": metadata["subjectCode"],
         "examCode": metadata["examCode"],
-        "fileName": file.filename,
+        "fileName": stem,
         "checksum": checksum,
         "questionCount": len(questions),
         "warnings": warnings,
@@ -1119,6 +1126,14 @@ def update_source_from_markdown(
     if len(raw_bytes) > _MAX_UPLOAD_BYTES:
         raise _error(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", "File exceeds 5MB limit.")
 
+    stem = _stem_from_markdown_upload_filename(file.filename)
+    if not stem:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_UPLOAD_FILENAME",
+            "Filename must yield a non-empty label after removing .md.",
+        )
+
     metadata = detect_subject_and_exam_with_fallback(file.filename, slug)
     if metadata["subjectSlug"] != slug.lower():
         raise _error(
@@ -1142,7 +1157,7 @@ def update_source_from_markdown(
         )
 
     source.exam_code = metadata["examCode"]
-    source.file_name = file.filename
+    source.file_name = stem
     source.checksum_sha256 = checksum
     source.parse_warnings = parse_warnings
     source.question_count = len(parsed_questions)
@@ -1346,7 +1361,7 @@ def _ensure_aggregated_bank_source(db: Session, *, subject_id: str, uploader_id:
         db,
         subject_id=subject_id,
         exam_code="AGG-BANK",
-        file_name="cau-hoi-tong-hop.md",
+        file_name="cau-hoi-tong-hop",
         checksum_sha256=checksum,
         uploaded_by=uploader_id,
         warnings=[],
