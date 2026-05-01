@@ -34,11 +34,11 @@ npx gitnexus analyze
 ## 3) Dùng hằng ngày
 
 ```bash
-gitnexus status
-gitnexus list
-gitnexus analyze
-gitnexus analyze --force
-gitnexus serve
+npx gitnexus status
+npx gitnexus list
+npx gitnexus analyze
+npx gitnexus analyze --force
+npx gitnexus serve
 ```
 
 - `status`: kiểm tra index của repo hiện tại.
