@@ -56,11 +56,12 @@ def _subject_code_from_slug(subject_slug: str) -> str:
     return subject_slug.upper()
 
 
-def _exam_code_for_admin_deck_filename(filename: str) -> str:
-    """Stable exam_code from arbitrary filename (≤64 chars); does not parse SP/SU/FA tokens."""
-    raw = unicodedata.normalize("NFKC", (filename or "").strip()).lower()
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return f"F{digest[:63]}"
+def _stem_from_markdown_upload_filename(filename: str) -> str:
+    """Basename without trailing .md (case-insensitive); NFKC + strip. Used for exam_code + file_name on admin slug upload."""
+    s = unicodedata.normalize("NFKC", (filename or "").strip())
+    if len(s) >= 4 and s.lower().endswith(".md"):
+        s = s[:-3]
+    return s.strip()
 
 
 def _cache_global_subjects_version() -> int:
@@ -1191,6 +1192,14 @@ def upsert_source_from_markdown_by_slug(
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise _error(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "INVALID_FILE_TYPE", "Only .md files are accepted.")
 
+    stem = _stem_from_markdown_upload_filename(file.filename)
+    if not stem:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "INVALID_UPLOAD_FILENAME",
+            "Filename must yield a non-empty label after removing .md.",
+        )
+
     raw_bytes = file.file.read(_MAX_UPLOAD_BYTES + 1)
     if len(raw_bytes) > _MAX_UPLOAD_BYTES:
         raise _error(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", "File exceeds 5MB limit.")
@@ -1198,9 +1207,7 @@ def upsert_source_from_markdown_by_slug(
     if _is_aggregated_bank_filename(file.filename):
         metadata = detect_subject_and_exam_with_fallback(file.filename, normalized_slug)
     else:
-        metadata = {
-            "examCode": _exam_code_for_admin_deck_filename(file.filename),
-        }
+        metadata = {"examCode": stem}
 
     checksum = f"sha256:{hashlib.sha256(raw_bytes).hexdigest()}"
     same_checksum = crud_question_source.get_source_by_checksum(
@@ -1225,7 +1232,7 @@ def upsert_source_from_markdown_by_slug(
         db,
         subject_id=subject.id,
         exam_code=metadata["examCode"],
-        file_name=file.filename,
+        file_name=stem,
         checksum_sha256=checksum,
         uploaded_by=uploader_id,
         warnings=parse_warnings,

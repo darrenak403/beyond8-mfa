@@ -6,7 +6,7 @@ from unittest.mock import Mock
 from app.services import question_source_service
 from app.services.question_source_service import (
     _answer_count_from_payload,
-    _exam_code_for_admin_deck_filename,
+    _stem_from_markdown_upload_filename,
     check_deck_answer,
     detect_subject_and_exam,
     detect_subject_and_exam_with_fallback,
@@ -39,11 +39,10 @@ def test_detect_subject_and_exam_invalid_filename() -> None:
         raise AssertionError("Expected HTTPException for invalid filename")
 
 
-def test_exam_code_for_admin_deck_filename_stable_and_bounded() -> None:
-    code = _exam_code_for_admin_deck_filename("MLN111C2 - SU 2025 - FEKTS.md")
-    assert code.startswith("F")
-    assert len(code) == 64
-    assert code == _exam_code_for_admin_deck_filename("MLN111C2 - SU 2025 - FEKTS.md")
+def test_stem_from_markdown_upload_filename_strips_md() -> None:
+    assert _stem_from_markdown_upload_filename("SWE201c - FA 2024 - FE.md") == "SWE201c - FA 2024 - FE"
+    assert _stem_from_markdown_upload_filename("  SWE201c - FA 2024 - FE.MD  ") == "SWE201c - FA 2024 - FE"
+    assert _stem_from_markdown_upload_filename("MLN111C2 - SU 2025 - FEKTS.md") == "MLN111C2 - SU 2025 - FEKTS"
 
 
 def test_upsert_source_from_markdown_by_slug_arbitrary_filename(monkeypatch) -> None:
@@ -73,7 +72,9 @@ def test_upsert_source_from_markdown_by_slug_arbitrary_filename(monkeypatch) -> 
     )
 
     exam_code = fake_crud.create_source.call_args.kwargs["exam_code"]
-    assert exam_code.startswith("F") and len(exam_code) == 64
+    file_name = fake_crud.create_source.call_args.kwargs["file_name"]
+    assert exam_code == "Anything goes - no pattern"
+    assert file_name == "Anything goes - no pattern"
 
 
 def test_upsert_source_from_markdown_by_slug_bank_file_uses_agg_bank(monkeypatch) -> None:
@@ -103,6 +104,7 @@ def test_upsert_source_from_markdown_by_slug_bank_file_uses_agg_bank(monkeypatch
     )
 
     assert fake_crud.create_source.call_args.kwargs["exam_code"] == "AGG-BANK"
+    assert fake_crud.create_source.call_args.kwargs["file_name"] == "cau-hoi-tong-hop"
 
 
 def test_ensure_admin_subject_calls_get_or_create(monkeypatch) -> None:

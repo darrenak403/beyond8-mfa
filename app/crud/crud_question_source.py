@@ -33,7 +33,7 @@ class CRUDQuestionSource:
                 CREATE TABLE IF NOT EXISTS question_sources (
                     id VARCHAR(36) PRIMARY KEY,
                     subject_id VARCHAR(36) NOT NULL REFERENCES subjects(id),
-                    exam_code VARCHAR(64) NOT NULL,
+                    exam_code VARCHAR(255) NOT NULL,
                     file_name VARCHAR(255) NOT NULL,
                     checksum_sha256 VARCHAR(71) NOT NULL,
                     raw_storage_key VARCHAR(255),
