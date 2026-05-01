@@ -49,6 +49,19 @@ The main agent reads each `phase-XX-*.md` file and implements the steps in order
 4. Mark phase complete in `plan.md`: `- [x] Phase N: {name}`
 5. Report what was done
 
+Execution constraints while cooking an approved plan:
+
+- Keep exactly one todo item `in_progress` at any time.
+- Do not start Phase N+1 before Phase N verification is complete.
+- Preserve backward compatibility by default; any breaking change requires user approval.
+- If implementation diverges from plan contract/sequence, stop and request confirmation.
+
+For performance-focused phases, apply these defaults unless phase text says otherwise:
+- Optimize query count/shape before adding new infrastructure layers.
+- Introduce async paths with sync fallback (strangler migration), not big-bang rewrites.
+- Add feature flags for behavior changes that affect runtime characteristics.
+- Require measurable evidence (tests + basic perf signal) before closing the phase.
+
 **Review Gate** — after each phase (or group of phases):
 - **Interactive mode**: pause and wait for user approval before continuing
 - **Auto mode**: continue automatically if no CRITICAL issues

@@ -7,7 +7,7 @@ description: Structured bug-fix pipeline. Scout → Diagnose+Fix → Review → 
 ## Usage
 
 ```
-/fix [--auto | --quick | --review] <bug description>
+/fix [--auto | --quick | --review | --parallel] <bug description>
 ```
 
 Auto-detect mode if no flag given based on description:
@@ -29,6 +29,11 @@ Auto-detect mode if no flag given based on description:
 ```
 
 If `--quick` or description is clearly a build/compiler/lint error: skip scout, go straight to Step 2 with the error message as input.
+
+For performance-related bugs:
+- prefer root-cause fixes at query shape/data flow level before infra-level tuning,
+- preserve API contract compatibility by default,
+- and return explicit verification evidence (tests plus at least one measurable signal) before marking fixed.
 
 ---
 
