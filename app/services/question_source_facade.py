@@ -173,5 +173,8 @@ class QuestionSourceService:
             db, slug=slug, deck_source_id=deck_source_id, uploader_id=uploader_id
         )
 
+    def ensure_admin_subject(self, db: Session, *, slug: str):
+        return legacy.ensure_admin_subject(db, slug=slug)
+
 
 question_source_service = QuestionSourceService()

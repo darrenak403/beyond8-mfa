@@ -6,9 +6,11 @@ from unittest.mock import Mock
 from app.services import question_source_service
 from app.services.question_source_service import (
     _answer_count_from_payload,
+    _exam_code_for_admin_deck_filename,
     check_deck_answer,
     detect_subject_and_exam,
     detect_subject_and_exam_with_fallback,
+    ensure_admin_subject,
     get_deck_progress,
     get_subject_decks,
     ingest_markdown_file,
@@ -35,6 +37,86 @@ def test_detect_subject_and_exam_invalid_filename() -> None:
         assert exc.detail["error"]["code"] == "UNRECOGNIZED_FILENAME_PATTERN"
     else:
         raise AssertionError("Expected HTTPException for invalid filename")
+
+
+def test_exam_code_for_admin_deck_filename_stable_and_bounded() -> None:
+    code = _exam_code_for_admin_deck_filename("MLN111C2 - SU 2025 - FEKTS.md")
+    assert code.startswith("F")
+    assert len(code) == 64
+    assert code == _exam_code_for_admin_deck_filename("MLN111C2 - SU 2025 - FEKTS.md")
+
+
+def test_upsert_source_from_markdown_by_slug_arbitrary_filename(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="sub-1", slug="mln111", code="MLN111")
+    fake_crud = Mock()
+    fake_crud.get_or_create_subject.return_value = fake_subject
+    fake_crud.get_source_by_checksum.return_value = None
+
+    def _create_source(_db, **kwargs):
+        return SimpleNamespace(
+            id="src-1",
+            exam_code=kwargs["exam_code"],
+            file_name=kwargs["file_name"],
+            checksum_sha256=kwargs["checksum_sha256"],
+            question_count=kwargs["question_count"],
+            parse_warnings=kwargs.get("warnings") or [],
+        )
+
+    fake_crud.create_source.side_effect = _create_source
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    content = b"Cau 1: Test?\nA. Yes\nB. No\nDap an: A\n"
+    upload = SimpleNamespace(filename="Anything goes - no pattern.md", file=BytesIO(content))
+
+    question_source_service.upsert_source_from_markdown_by_slug(
+        db=Mock(), slug="mln111", file=upload, uploader_id=None
+    )
+
+    exam_code = fake_crud.create_source.call_args.kwargs["exam_code"]
+    assert exam_code.startswith("F") and len(exam_code) == 64
+
+
+def test_upsert_source_from_markdown_by_slug_bank_file_uses_agg_bank(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="sub-1", slug="mln111", code="MLN111")
+    fake_crud = Mock()
+    fake_crud.get_or_create_subject.return_value = fake_subject
+    fake_crud.get_source_by_checksum.return_value = None
+
+    def _create_source(_db, **kwargs):
+        return SimpleNamespace(
+            id="src-bank",
+            exam_code=kwargs["exam_code"],
+            file_name=kwargs["file_name"],
+            checksum_sha256=kwargs["checksum_sha256"],
+            question_count=kwargs["question_count"],
+            parse_warnings=kwargs.get("warnings") or [],
+        )
+
+    fake_crud.create_source.side_effect = _create_source
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    content = b"Cau 1: Bank row?\nA. Yes\nB. No\nDap an: A\n"
+    upload = SimpleNamespace(filename="cau-hoi-tong-hop.md", file=BytesIO(content))
+
+    question_source_service.upsert_source_from_markdown_by_slug(
+        db=Mock(), slug="mln111", file=upload, uploader_id=None
+    )
+
+    assert fake_crud.create_source.call_args.kwargs["exam_code"] == "AGG-BANK"
+
+
+def test_ensure_admin_subject_calls_get_or_create(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(slug="newsub", code="NEWSUB")
+    fake_crud = Mock()
+    fake_crud.get_or_create_subject.return_value = fake_subject
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda db, fn: None)
+    monkeypatch.setattr(question_source_service, "_invalidate_subject_catalog", lambda: None)
+
+    out = ensure_admin_subject(Mock(), slug="  newsub  ")
+    assert out["slug"] == "newsub"
+    assert out["code"] == "NEWSUB"
+    fake_crud.get_or_create_subject.assert_called_once()
 
 
 def test_parse_questions_extracts_basic_fields() -> None:

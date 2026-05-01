@@ -5,6 +5,7 @@ def test_critical_api_routes_are_stable() -> None:
     route_paths = {route.path for route in api_router.routes}
     assert "/v1/subjects" in route_paths
     assert "/v1/subjects/{slug}/bank" in route_paths
+    assert "/v1/admin/question-sources/subjects" in route_paths
     assert "/v1/admin/question-sources/subjects/{slug}/upload" in route_paths
     assert "/stats/otp-verifications" in route_paths
     assert "/otp/generate" in route_paths

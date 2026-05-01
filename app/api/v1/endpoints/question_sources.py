@@ -10,6 +10,7 @@ from app.db.session import get_async_db, get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
+    AdminEnsureSubjectRequest,
     AnswerCheckRequest,
     AnswerCheckResponse,
     DeckProgressUpdateRequest,
@@ -19,6 +20,7 @@ from app.schemas.question_source import (
     MergeIntoBankResponse,
     SourceStateQuestion,
     SourceStateResponse,
+    SubjectSummary,
     UploadSourceResponse,
 )
 from app.utils.pagination import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_slice
@@ -66,6 +68,7 @@ upsert_source_from_markdown_by_slug = question_source_service.upsert_source_from
 delete_source = question_source_service.delete_source
 merge_deck_into_aggregated_bank_preview = question_source_service.merge_deck_into_aggregated_bank_preview
 merge_deck_into_aggregated_bank = question_source_service.merge_deck_into_aggregated_bank
+ensure_admin_subject = question_source_service.ensure_admin_subject
 
 
 @user_router.get(
@@ -84,6 +87,20 @@ async def list_subjects(
     else:
         data = service_list_subjects_page(db, page=page, limit=limit)
     return success_response(data=data)
+
+
+@admin_router.post(
+    "/admin/question-sources/subjects",
+    response_model=ApiResponse[SubjectSummary],
+    summary="Admin: ensure subject exists (create by slug if missing)",
+)
+def admin_ensure_subject(
+    payload: AdminEnsureSubjectRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    data = ensure_admin_subject(db, slug=payload.slug)
+    return success_response(data=data, message="Subject ensured successfully")
 
 
 @admin_router.get(

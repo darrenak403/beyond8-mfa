@@ -19,6 +19,12 @@ class SubjectSummary(BaseModel):
     hint: str
 
 
+class AdminEnsureSubjectRequest(BaseModel):
+    """Create subject by slug if missing (idempotent); same codes as list subjects."""
+
+    slug: str = Field(min_length=1, max_length=64)
+
+
 class AdminSourceSummary(BaseModel):
     sourceId: str
     examCode: str
