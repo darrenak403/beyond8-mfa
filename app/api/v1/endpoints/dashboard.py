@@ -88,7 +88,11 @@ def get_user_by_id_dashboard(
     db: Session = Depends(get_db),
 ):
     user = auth_service.get_user_by_id(db, user_id=user_id)
-    verification_history_items = stats_service.get_otp_verification_history(db, user_id=user_id)
+    verification_history_result = stats_service.get_otp_verification_history(db, user_id=user_id)
+    if isinstance(verification_history_result, tuple):
+        _, verification_history_items = verification_history_result
+    else:
+        verification_history_items = verification_history_result
     response_data = UserDetailResponse(
         user=_to_user_item_response(user),
         otp_verification_history=verification_history_items[0] if verification_history_items else None,
