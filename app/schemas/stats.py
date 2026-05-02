@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class OTPStatsResponse(BaseModel):
@@ -11,7 +11,7 @@ class OTPStatsResponse(BaseModel):
 
 class OTPVerificationHistoryItem(BaseModel):
     user_id: str
-    email: EmailStr
+    email: str
     verification_count: int
     last_verified_at: datetime | None = None
 

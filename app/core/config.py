@@ -7,6 +7,29 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
 
+# Always merged with CORS_ORIGINS so production env cannot accidentally drop known admin / local origins.
+_BUILTIN_CORS_ORIGINS: tuple[str, ...] = (
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    "http://100.69.71.17:3000",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "https://source.beyond8.io.vn",
+    "https://mfa.beyond8.io.vn",
+    "https://hoctot.beyond8.io.vn",
+)
+
+
+def _parse_cors_origins_raw(raw: str) -> List[str]:
+    normalized: List[str] = []
+    for raw_item in raw.split(","):
+        candidate = raw_item.strip().strip("\"'").rstrip("/")
+        if not candidate:
+            continue
+        if candidate not in normalized:
+            normalized.append(candidate)
+    return normalized
+
 
 class Settings(BaseSettings):
     app_name: str = "Beyond8 Auth Service"
@@ -43,31 +66,21 @@ class Settings(BaseSettings):
     upstash_redis_rest_url: str = Field(default="", alias="UPSTASH_REDIS_REST_URL")
     upstash_redis_rest_token: str = Field(default="", alias="UPSTASH_REDIS_REST_TOKEN")
     cors_origins: str = Field(
-        default=(
-            "http://127.0.0.1:3000,"
-            "http://localhost:3000,"
-            "http://100.69.71.17:3000,"
-            "http://127.0.0.1:5500,"
-            "http://localhost:5500,"
-            "https://source.beyond8.io.vn," 
-            "https://mfa.beyond8.io.vn,"
-            "https://hoctot.beyond8.io.vn"
-        ),
+        default="",
         alias="CORS_ORIGINS",
+        description="Extra origins (comma-separated), merged with built-in defaults (mfa/source/hoctot/localhost).",
     )
 
     model_config = SettingsConfigDict(env_file=_env_path, env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @property
     def cors_origins_list(self) -> List[str]:
-        normalized: List[str] = []
-        for raw_item in self.cors_origins.split(","):
-            candidate = raw_item.strip().strip("\"'").rstrip("/")
-            if not candidate:
-                continue
-            if candidate not in normalized:
-                normalized.append(candidate)
-        return normalized
+        merged = list(_BUILTIN_CORS_ORIGINS) + _parse_cors_origins_raw(self.cors_origins)
+        out: List[str] = []
+        for origin in merged:
+            if origin not in out:
+                out.append(origin)
+        return out
 
     @property
     def docs_basic_auth_enabled(self) -> bool:

@@ -27,7 +27,8 @@ class SessionStatusResponse(BaseModel):
 
 class UserItemResponse(BaseModel):
     id: str
-    email: EmailStr
+    # str (not EmailStr) so admin list/detail do not 500 on legacy or odd stored emails
+    email: str
     role: str
     is_active: bool
     course_access_active: bool = False

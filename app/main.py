@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -87,6 +87,17 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError):
         data=exc.errors(),
     )
     return JSONResponse(status_code=422, content=payload.model_dump())
+
+
+@app.exception_handler(ResponseValidationError)
+async def response_validation_exception_handler(_: Request, exc: ResponseValidationError):
+    """Avoid opaque 500 when response_model validation fails (e.g. legacy DB shapes)."""
+    payload = error_response(
+        message="Dữ liệu phản hồi không hợp lệ",
+        code=500,
+        data=exc.errors(),
+    )
+    return JSONResponse(status_code=500, content=payload.model_dump())
 
 
 @app.exception_handler(HTTPException)

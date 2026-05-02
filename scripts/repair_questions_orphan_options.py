@@ -28,7 +28,7 @@ from app.models.subject import Subject
 from app.services.cache_service import cache_service
 
 _LABEL_RANGE = frozenset("ABCDEFGH")
-_LABEL_TAIL_RE = re.compile(r"([A-H])[\).:\-]\s*", re.IGNORECASE)
+_LABEL_TAIL_RE = re.compile(r"(?:(?<=^)|(?<=\s))([A-H])[\).:\-]\s+", re.IGNORECASE)
 
 
 def _letter_labels_from_answers(answers_json: list | None, answer_text: str | None) -> set[str]:
@@ -89,11 +89,21 @@ def repair_row(question: Question) -> dict | None:
     opts = list(question.options_json or [])
     opt_labels = _option_labels(opts)
     ans_labels = _letter_labels_from_answers(question.answers_json, question.answer_text)
-    missing = ans_labels - opt_labels
+    missing_from_answers = ans_labels - opt_labels
+    missing_from_stem = {
+        label
+        for label in _LABEL_RANGE
+        if label not in opt_labels and _find_orphan_cut_index(question.stem, label) is not None
+    }
+    missing = missing_from_answers | missing_from_stem
     if not missing:
         return None
-    first_missing = min(missing)
-    cut = _find_orphan_cut_index(question.stem, first_missing)
+    cut_candidates = [
+        _find_orphan_cut_index(question.stem, label)
+        for label in sorted(missing)
+    ]
+    valid_cuts = [idx for idx in cut_candidates if idx is not None]
+    cut = min(valid_cuts) if valid_cuts else None
     if cut is None:
         return {"status": "skip", "reason": "no_pattern_in_stem", "missing": sorted(missing)}
     cleaned_stem = question.stem[:cut].rstrip()
@@ -110,11 +120,18 @@ def repair_row(question: Question) -> dict | None:
             "labels": parsed_labels_list,
         }
     parsed_labels = set(parsed_labels_list)
-    if not missing <= parsed_labels:
+    if not parsed_labels <= missing:
+        return {
+            "status": "skip",
+            "reason": "parsed_tail_has_unexpected_labels",
+            "missing": sorted(missing),
+            "parsed_labels": sorted(parsed_labels),
+        }
+    if not missing_from_answers <= parsed_labels:
         return {
             "status": "skip",
             "reason": "parsed_tail_missing_answer_labels",
-            "missing": sorted(missing),
+            "missing_answer_labels": sorted(missing_from_answers),
             "parsed_labels": sorted(parsed_labels),
         }
     merged = opts + [p for p in parsed if p["label"] not in opt_labels]
