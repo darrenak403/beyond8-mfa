@@ -10,28 +10,43 @@ from app.models.user import User
 
 
 class AuthService:
+    _ALLOWED_EMAIL_SUFFIXES = ("@gmail.com", "@fpt.edu.vn")
+
+    def _normalize_email(self, email: str) -> str:
+        return email.lower().strip()
+
+    def _ensure_allowed_domain(self, email: str) -> None:
+        if any(email.endswith(suffix) for suffix in self._ALLOWED_EMAIL_SUFFIXES):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chỉ hỗ trợ email đuôi @gmail.com hoặc @fpt.edu.vn",
+        )
+
     def signup(self, db: Session, email: str) -> bool:
-        normalized_email = email.lower().strip()
+        normalized_email = self._normalize_email(email)
+        self._ensure_allowed_domain(normalized_email)
 
         if normalized_email == settings.seed_admin_email.lower().strip():
             crud_user.get_or_create(db, normalized_email, "admin")
         else:
             user = crud_user.get_by_email(db, normalized_email)
-            if user is None:
-                crud_user.get_or_create(db, normalized_email, "user")
+            if user is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tài khoản đã tồn tại")
+            crud_user.get_or_create(db, normalized_email, "user")
 
         return True
 
     def signin(self, db: Session, email: str) -> tuple[str, User, str]:
-        normalized_email = email.lower().strip()
+        normalized_email = self._normalize_email(email)
+        self._ensure_allowed_domain(normalized_email)
 
         if normalized_email == settings.seed_admin_email.lower().strip():
-            user = crud_user.get_or_create(db, normalized_email, "admin")
-        else:
-            # Preserve existing role (e.g. admin). Only create a new account as "user" if missing.
             user = crud_user.get_by_email(db, normalized_email)
-            if user is None:
-                user = crud_user.get_or_create(db, normalized_email, "user")
+        else:
+            user = crud_user.get_by_email(db, normalized_email)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tài khoản chưa đăng ký")
 
         if not user.is_active:
             raise HTTPException(
