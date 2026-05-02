@@ -155,7 +155,7 @@ def delete_user_dashboard(
             detail="Thiếu hoặc sai header X-Confirm-Delete: gửi giá trị 'permanent' để xác nhận xóa vĩnh viễn.",
         )
     auth_service.delete_user(db, user_id=user_id, admin_user_id=admin_user.id)
-    return success_response(data=None, message="Đã xóa người dùng vĩnh viễn ${user_id}")
+    return success_response(data=None, message=f"Đã xóa người dùng vĩnh viễn {user_id}")
 
 
 @router.patch("/users/{user_id}/otp-verified-key/clear", response_model=ApiResponse[UserItemResponse])
