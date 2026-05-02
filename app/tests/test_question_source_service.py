@@ -149,6 +149,33 @@ def test_parse_questions_extracts_inline_answer_from_stem() -> None:
     assert questions[0]["answer_text"] == "A"
 
 
+def test_parse_questions_supports_options_e_to_h() -> None:
+    markdown = """
+Câu 1: Pick the constant sum scale.
+A. Ordinal
+B. Nominal
+C. Semantic differential
+D. Likert
+E. Constant sum
+F. None
+Đáp án: E
+"""
+    questions, warnings = parse_questions(markdown)
+    assert len(questions) == 1
+    assert warnings == []
+    assert len(questions[0]["options"]) == 6
+    assert questions[0]["options"][4] == {"label": "E", "text": "Constant sum"}
+    assert questions[0]["answer_text"] == "E"
+    assert questions[0]["answers"] == ["E"]
+    assert "Constant sum" not in questions[0]["stem"]
+
+
+def test_inline_answer_supports_letters_beyond_d() -> None:
+    markdown = "Câu 1: ABC? Đáp án: E,F\nA. a\nB. b\nC. c\nD. d\nE. e\nF. f"
+    questions, _ = parse_questions(markdown)
+    assert questions[0]["answers"] == ["E", "F"]
+
+
 def test_answer_count_from_payload() -> None:
     assert _answer_count_from_payload({"answers": ["A"], "answer": "A"}) == 1
     assert _answer_count_from_payload({"answers": ["A", "C"], "answer": "A,C"}) == 2

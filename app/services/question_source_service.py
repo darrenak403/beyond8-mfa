@@ -18,9 +18,9 @@ _TERM_PATTERN = re.compile(r"^(SP|SU|FA)$")
 _YEAR_PATTERN = re.compile(r"^(\d{2}|\d{4})$")
 _TYPE_PATTERN = re.compile(r"^(FE|RE|TE1|TE2|BLOCK5|C1FE|C2FE|FINAL)$")
 _QUESTION_START = re.compile(r"^\s*(?:(?:C[ÂA]U)|QUESTION)?\s*\d+\s*[\).:\-]\s*(.+)$", flags=re.IGNORECASE)
-_OPTION_LINE = re.compile(r"^\s*([A-D])[\).:\-]\s*(.+)$", flags=re.IGNORECASE)
+_OPTION_LINE = re.compile(r"^\s*([A-H])[\).:\-]\s*(.+)$", flags=re.IGNORECASE)
 _ANSWER_LINE = re.compile(r"^\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*(.+)$", flags=re.IGNORECASE)
-_INLINE_ANSWER = re.compile(r"\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*([A-D](?:\s*[,;/]\s*[A-D])*)\s*$", flags=re.IGNORECASE)
+_INLINE_ANSWER = re.compile(r"\s*(?:(?:Đ|D)[ÁA]P\s*Á?N|ANSWER)\s*[:\-]\s*([A-H](?:\s*[,;/]\s*[A-H])*)\s*$", flags=re.IGNORECASE)
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _CACHE_SUBJECTS_TTL_SECONDS = 3600
 _CACHE_SUBJECT_READ_TTL_SECONDS = 1800
