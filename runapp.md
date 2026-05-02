@@ -4,12 +4,15 @@ taskkill //F //IM python.exe
 
 permanent
 
+rtk gain
+rtk gain --history
+
 migrate:
 
-# 1) BE: chạy test phần question source
+# 1) BE: chạy test
 
 cd /Users/ngothanhdat/Documents/CODE/beyond8-quiz/be/beyond8-mfa
-python -m pytest app/tests/test_question_source_service.py -q
+python -m pytest app/tests/... -q
 
 # 2) BE: chạy migration (nếu có)
 
