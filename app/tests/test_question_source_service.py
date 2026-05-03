@@ -47,16 +47,16 @@ def test_stem_from_markdown_upload_filename_strips_md() -> None:
     assert _stem_from_markdown_upload_filename("MLN111C2 - SU 2025 - FEKTS.md") == "MLN111C2 - SU 2025 - FEKTS"
 
 
-def test_exam_sort_key_bank_first_then_chronological_then_unparseable() -> None:
+def test_exam_sort_key_bank_first_then_newest_first_then_unparseable() -> None:
     bank = _exam_sort_key("cau-hoi-tong-hop", "AGG-BANK")
     sp_2024 = _exam_sort_key("deck-a.md", "SP-2024-FE")
     fa_2024 = _exam_sort_key("deck-b.md", "FA-2024-FE")
     fa_2023 = _exam_sort_key("deck-c.md", "FA-2023-FE")
     weird = _exam_sort_key("custom-deck.md", "custom-deck")
 
-    assert bank < sp_2024
-    assert sp_2024 < fa_2024
-    assert fa_2023 < fa_2024
+    assert bank < fa_2024
+    assert fa_2024 < sp_2024
+    assert sp_2024 < fa_2023
     for k in (sp_2024, fa_2024, fa_2023):
         assert k < weird
 

@@ -55,7 +55,7 @@ _EXAM_SORT_TYPE_ORDER = {"FE": 1, "RE": 2, "TE1": 3, "TE2": 4, "BLOCK5": 5, "C1F
 
 
 def _exam_sort_key(file_name: str, exam_code: str | None) -> tuple:
-    """Sort key: bank first, then year ASC, term (SP→SU→FA), exam type; unparseable last."""
+    """Sort key for ascending sort(): bank first, then newest-first (year DESC, FA→SU→SP, type FINAL→FE), unparseable last."""
     if _is_aggregated_bank_filename(file_name):
         return (0, 0, 0, 0, "")
     text = (exam_code or file_name or "").upper()
@@ -66,7 +66,14 @@ def _exam_sort_key(file_name: str, exam_code: str | None) -> tuple:
     if term is None or raw_year is None or exam_type is None:
         return (2, 9999, 99, 99, (file_name or "").lower())
     year = int(f"20{raw_year}") if len(raw_year) == 2 else int(raw_year)
-    return (1, year, _EXAM_SORT_TERM_ORDER[term], _EXAM_SORT_TYPE_ORDER[exam_type], (file_name or "").lower())
+    # Negate year / term / type so ascending tuple order = descending chronology within parsed exams.
+    return (
+        1,
+        -year,
+        -_EXAM_SORT_TERM_ORDER[term],
+        -_EXAM_SORT_TYPE_ORDER[exam_type],
+        (file_name or "").lower(),
+    )
 
 
 def _subject_code_from_slug(subject_slug: str) -> str:
