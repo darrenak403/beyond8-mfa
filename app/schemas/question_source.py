@@ -17,6 +17,10 @@ class SubjectSummary(BaseModel):
     slug: str
     code: str
     hint: str
+    bankQuestionCount: int = Field(
+        default=0,
+        description="Tổng số câu trong ngân hàng (source `cau-hoi-tong-hop`; nếu chưa có thì fallback như GET bank).",
+    )
 
 
 class AdminEnsureSubjectRequest(BaseModel):

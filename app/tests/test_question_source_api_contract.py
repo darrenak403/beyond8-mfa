@@ -86,7 +86,7 @@ def test_get_subjects_nonempty(monkeypatch):
         qs,
         "service_list_subjects_page",
         lambda _db, page, limit, q=None: {
-            "items": [{"slug": "pmg201c", "code": "PMG201C", "hint": "Mon luyen de"}],
+            "items": [{"slug": "pmg201c", "code": "PMG201C", "hint": "Mon luyen de", "bankQuestionCount": 42}],
             "page": page,
             "limit": limit,
             "total": 1,
@@ -100,6 +100,7 @@ def test_get_subjects_nonempty(monkeypatch):
     data = response.json().get("data")
     assert isinstance(data, dict)
     assert data["items"][0]["slug"] == "pmg201c"
+    assert data["items"][0]["bankQuestionCount"] == 42
     assert data["total"] == 1
     assert data["hasNext"] is False
 

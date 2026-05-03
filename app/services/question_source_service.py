@@ -342,7 +342,17 @@ def list_subjects_page(db: Session, *, page: int, limit: int, q: str | None = No
     total = crud_question_source.count_subjects(db, q=q_norm)
     offset = (page - 1) * limit
     rows = crud_question_source.list_subjects_page(db, offset=offset, limit=limit, q=q_norm)
-    items = [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in rows]
+    subject_ids = [row.id for row in rows]
+    bank_counts = crud_question_source.bank_question_counts_by_subject_ids(db, subject_ids)
+    items = [
+        {
+            "slug": row.slug,
+            "code": row.code,
+            "hint": "Mon luyen de",
+            "bankQuestionCount": bank_counts.get(row.id, 0),
+        }
+        for row in rows
+    ]
     total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
     return {
         "items": items,
@@ -1338,7 +1348,13 @@ def ensure_admin_subject(db: Session, *, slug: str) -> dict:
         db, slug=normalized_slug, code=_subject_code_from_slug(normalized_slug)
     )
     _schedule_after_commit(db, lambda: _invalidate_subject_catalog())
-    return {"slug": subject.slug, "code": subject.code, "hint": "Mon luyen de"}
+    bank_counts = crud_question_source.bank_question_counts_by_subject_ids(db, [subject.id])
+    return {
+        "slug": subject.slug,
+        "code": subject.code,
+        "hint": "Mon luyen de",
+        "bankQuestionCount": bank_counts.get(subject.id, 0),
+    }
 
 
 def delete_source(db: Session, *, slug: str, source_id: str) -> dict:

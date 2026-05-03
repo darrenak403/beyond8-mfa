@@ -217,6 +217,52 @@ class CRUDQuestionSource:
         stmt = stmt.order_by(Subject.code.asc()).offset(max(0, offset)).limit(limit)
         return list(db.execute(stmt).scalars().all())
 
+    def bank_question_counts_by_subject_ids(self, db: Session, subject_ids: list[str]) -> dict[str, int]:
+        """
+        Chỉ đọc cột `question_sources.question_count` (đã có sẵn sau parse) — không chạm bảng `questions`.
+        Bank: `cau-hoi-tong-hop` mới nhất; không có thì fallback source SUCCESS mới nhất (giống GET bank).
+        Một query Postgres `DISTINCT ON` + `COALESCE`.
+        """
+        if not subject_ids:
+            return {}
+        unique_ids = list(dict.fromkeys(subject_ids))
+        success = ParseStatus.SUCCESS.value
+        rows = db.execute(
+            text(
+                """
+                WITH bank AS (
+                    SELECT DISTINCT ON (qs.subject_id)
+                        qs.subject_id,
+                        qs.question_count
+                    FROM question_sources qs
+                    WHERE qs.subject_id = ANY(CAST(:subject_ids AS text[]))
+                      AND qs.parse_status = :success
+                      AND qs.is_deleted IS FALSE
+                      AND lower(trim(qs.file_name)) IN ('cau-hoi-tong-hop.md', 'cau-hoi-tong-hop')
+                    ORDER BY qs.subject_id, qs.uploaded_at DESC, qs.id DESC
+                ),
+                fb AS (
+                    SELECT DISTINCT ON (qs.subject_id)
+                        qs.subject_id,
+                        qs.question_count
+                    FROM question_sources qs
+                    WHERE qs.subject_id = ANY(CAST(:subject_ids AS text[]))
+                      AND qs.parse_status = :success
+                      AND qs.is_deleted IS FALSE
+                    ORDER BY qs.subject_id, qs.uploaded_at DESC, qs.id DESC
+                )
+                SELECT
+                    s.subject_id::text AS subject_id,
+                    COALESCE(b.question_count, f.question_count, 0)::integer AS q
+                FROM unnest(CAST(:subject_ids AS text[])) AS s(subject_id)
+                LEFT JOIN bank b ON b.subject_id = s.subject_id
+                LEFT JOIN fb f ON f.subject_id = s.subject_id
+                """
+            ),
+            {"subject_ids": unique_ids, "success": success},
+        ).mappings().all()
+        return {str(r["subject_id"]): int(r["q"] or 0) for r in rows}
+
     def get_subject_by_slug(self, db: Session, slug: str) -> Subject | None:
         return db.execute(select(Subject).where(Subject.slug == slug, Subject.is_active.is_(True))).scalar_one_or_none()
 

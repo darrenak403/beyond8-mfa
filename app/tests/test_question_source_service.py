@@ -219,9 +219,10 @@ def test_upsert_source_from_markdown_by_slug_bank_file_uses_agg_bank(monkeypatch
 
 
 def test_ensure_admin_subject_calls_get_or_create(monkeypatch) -> None:
-    fake_subject = SimpleNamespace(slug="newsub", code="NEWSUB")
+    fake_subject = SimpleNamespace(id="sub-1", slug="newsub", code="NEWSUB")
     fake_crud = Mock()
     fake_crud.get_or_create_subject.return_value = fake_subject
+    fake_crud.bank_question_counts_by_subject_ids.return_value = {"sub-1": 0}
     monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
     monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda db, fn: None)
     monkeypatch.setattr(question_source_service, "_invalidate_subject_catalog", lambda: None)
@@ -229,6 +230,7 @@ def test_ensure_admin_subject_calls_get_or_create(monkeypatch) -> None:
     out = ensure_admin_subject(Mock(), slug="  newsub  ")
     assert out["slug"] == "newsub"
     assert out["code"] == "NEWSUB"
+    assert out["bankQuestionCount"] == 0
     fake_crud.get_or_create_subject.assert_called_once()
 
 
