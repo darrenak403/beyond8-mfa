@@ -7,6 +7,7 @@ from app.services import question_source_service
 from app.services.question_source_service import (
     _answer_count_from_payload,
     _exam_sort_key,
+    get_admin_subject_sources_page,
     _stem_from_markdown_upload_filename,
     check_deck_answer,
     detect_subject_and_exam,
@@ -58,6 +59,51 @@ def test_exam_sort_key_bank_first_then_chronological_then_unparseable() -> None:
     assert fa_2023 < fa_2024
     for k in (sp_2024, fa_2024, fa_2023):
         assert k < weird
+
+
+def test_get_admin_subject_sources_page_filters_by_q(monkeypatch) -> None:
+    fake_subject = SimpleNamespace(id="sub-1", slug="mln122", code="MLN122")
+    sources = [
+        SimpleNamespace(
+            id="bank-1",
+            file_name="cau-hoi-tong-hop",
+            exam_code="AGG-BANK",
+            question_count=500,
+            uploaded_at=None,
+        ),
+        SimpleNamespace(
+            id="src-sp-fe",
+            file_name="MLN122 - SP 2024 - FE.md",
+            exam_code="SP-2024-FE",
+            question_count=10,
+            uploaded_at=None,
+        ),
+        SimpleNamespace(
+            id="src-sp-re",
+            file_name="MLN122 - SP 2024 - RE.md",
+            exam_code="SP-2024-RE",
+            question_count=10,
+            uploaded_at=None,
+        ),
+        SimpleNamespace(
+            id="src-fa",
+            file_name="MLN122 - FA 2024 - FE.md",
+            exam_code="FA-2024-FE",
+            question_count=10,
+            uploaded_at=None,
+        ),
+    ]
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = fake_subject
+    fake_crud.list_sources_by_subject.return_value = sources
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    out = get_admin_subject_sources_page(Mock(), "mln122", page=1, limit=10, q="sp")
+    assert out["total"] == 2
+    assert {i["sourceId"] for i in out["items"]} == {"src-sp-fe", "src-sp-re"}
+
+    out_all = get_admin_subject_sources_page(Mock(), "mln122", page=1, limit=10, q=None)
+    assert out_all["total"] == 4
 
 
 def test_upsert_source_from_markdown_by_slug_arbitrary_filename(monkeypatch) -> None:

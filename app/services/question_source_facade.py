@@ -11,20 +11,20 @@ class QuestionSourceService:
     def list_subjects(self, db: Session):
         return legacy.list_subjects(db)
     
-    def list_subjects_page(self, db: Session, *, page: int, limit: int):
-        return legacy.list_subjects_page(db, page=page, limit=limit)
+    def list_subjects_page(self, db: Session, *, page: int, limit: int, q: str | None = None):
+        return legacy.list_subjects_page(db, page=page, limit=limit, q=q)
 
-    async def list_subjects_page_async(self, db: AsyncSession, *, page: int, limit: int):
-        return await legacy.list_subjects_page_async(db, page=page, limit=limit)
+    async def list_subjects_page_async(self, db: AsyncSession, *, page: int, limit: int, q: str | None = None):
+        return await legacy.list_subjects_page_async(db, page=page, limit=limit, q=q)
 
     def get_admin_subject_sources(self, db: Session, slug: str):
         return legacy.get_admin_subject_sources(db, slug)
     
-    def get_admin_subject_sources_page(self, db: Session, slug: str, *, page: int, limit: int):
-        return legacy.get_admin_subject_sources_page(db, slug, page=page, limit=limit)
+    def get_admin_subject_sources_page(self, db: Session, slug: str, *, page: int, limit: int, q: str | None = None):
+        return legacy.get_admin_subject_sources_page(db, slug, page=page, limit=limit, q=q)
 
-    async def get_admin_subject_sources_page_async(self, db: AsyncSession, slug: str, *, page: int, limit: int):
-        return await legacy.get_admin_subject_sources_page_async(db, slug, page=page, limit=limit)
+    async def get_admin_subject_sources_page_async(self, db: AsyncSession, slug: str, *, page: int, limit: int, q: str | None = None):
+        return await legacy.get_admin_subject_sources_page_async(db, slug, page=page, limit=limit, q=q)
 
     def get_source_state(self, db: Session, slug: str):
         return legacy.get_source_state(db, slug)

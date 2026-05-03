@@ -81,11 +81,12 @@ async def list_subjects(
     db: Session = Depends(get_async_db),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    q: str | None = Query(default=None, min_length=1, max_length=100, description="Search code/slug (case-insensitive)"),
 ):
     if settings.enable_async_database and isinstance(db, AsyncSession):
-        data = await service_list_subjects_page_async(db, page=page, limit=limit)
+        data = await service_list_subjects_page_async(db, page=page, limit=limit, q=q)
     else:
-        data = service_list_subjects_page(db, page=page, limit=limit)
+        data = service_list_subjects_page(db, page=page, limit=limit, q=q)
     return success_response(data=data)
 
 
@@ -113,11 +114,12 @@ async def admin_list_subjects(
     _: User = Depends(get_current_admin),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    q: str | None = Query(default=None, min_length=1, max_length=100, description="Search code/slug (case-insensitive)"),
 ):
     if settings.enable_async_database and isinstance(db, AsyncSession):
-        data = await service_list_subjects_page_async(db, page=page, limit=limit)
+        data = await service_list_subjects_page_async(db, page=page, limit=limit, q=q)
     else:
-        data = service_list_subjects_page(db, page=page, limit=limit)
+        data = service_list_subjects_page(db, page=page, limit=limit, q=q)
     return success_response(data=data)
 
 
@@ -132,11 +134,17 @@ async def admin_subject_sources(
     _: User = Depends(get_current_admin),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    q: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Search file_name / exam_code (case-insensitive substring)",
+    ),
 ):
     if settings.enable_async_database and isinstance(db, AsyncSession):
-        data = await get_admin_subject_sources_page_async(db, slug, page=page, limit=limit)
+        data = await get_admin_subject_sources_page_async(db, slug, page=page, limit=limit, q=q)
     else:
-        data = get_admin_subject_sources_page(db, slug, page=page, limit=limit)
+        data = get_admin_subject_sources_page(db, slug, page=page, limit=limit, q=q)
     return success_response(data=data)
 
 

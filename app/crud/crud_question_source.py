@@ -1,7 +1,7 @@
 import json
 import uuid
 
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -202,19 +202,20 @@ class CRUDQuestionSource:
     def list_subjects(self, db: Session) -> list[Subject]:
         return list(db.execute(select(Subject).where(Subject.is_active.is_(True)).order_by(Subject.code.asc())).scalars().all())
 
-    def count_subjects(self, db: Session) -> int:
-        return int(db.execute(select(func.count(Subject.id)).where(Subject.is_active.is_(True))).scalar_one() or 0)
+    def count_subjects(self, db: Session, q: str | None = None) -> int:
+        stmt = select(func.count(Subject.id)).where(Subject.is_active.is_(True))
+        if q and q.strip():
+            pat = f"%{q.strip().lower()}%"
+            stmt = stmt.where(or_(func.lower(Subject.code).like(pat), func.lower(Subject.slug).like(pat)))
+        return int(db.execute(stmt).scalar_one() or 0)
 
-    def list_subjects_page(self, db: Session, *, offset: int, limit: int) -> list[Subject]:
-        return list(
-            db.execute(
-                select(Subject)
-                .where(Subject.is_active.is_(True))
-                .order_by(Subject.code.asc())
-                .offset(max(0, offset))
-                .limit(limit)
-            ).scalars().all()
-        )
+    def list_subjects_page(self, db: Session, *, offset: int, limit: int, q: str | None = None) -> list[Subject]:
+        stmt = select(Subject).where(Subject.is_active.is_(True))
+        if q and q.strip():
+            pat = f"%{q.strip().lower()}%"
+            stmt = stmt.where(or_(func.lower(Subject.code).like(pat), func.lower(Subject.slug).like(pat)))
+        stmt = stmt.order_by(Subject.code.asc()).offset(max(0, offset)).limit(limit)
+        return list(db.execute(stmt).scalars().all())
 
     def get_subject_by_slug(self, db: Session, slug: str) -> Subject | None:
         return db.execute(select(Subject).where(Subject.slug == slug, Subject.is_active.is_(True))).scalar_one_or_none()

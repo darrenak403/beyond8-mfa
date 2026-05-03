@@ -318,10 +318,11 @@ def list_subjects(db: Session) -> list[dict]:
     return payload
 
 
-def list_subjects_page(db: Session, *, page: int, limit: int) -> dict:
-    total = crud_question_source.count_subjects(db)
+def list_subjects_page(db: Session, *, page: int, limit: int, q: str | None = None) -> dict:
+    q_norm = (q or "").strip() or None
+    total = crud_question_source.count_subjects(db, q=q_norm)
     offset = (page - 1) * limit
-    rows = crud_question_source.list_subjects_page(db, offset=offset, limit=limit)
+    rows = crud_question_source.list_subjects_page(db, offset=offset, limit=limit, q=q_norm)
     items = [{"slug": row.slug, "code": row.code, "hint": "Mon luyen de"} for row in rows]
     total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
     return {
@@ -365,16 +366,23 @@ def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
     return payload
 
 
-def get_admin_subject_sources_page(db: Session, slug: str, *, page: int, limit: int) -> dict:
+def get_admin_subject_sources_page(db: Session, slug: str, *, page: int, limit: int, q: str | None = None) -> dict:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
-    total = crud_question_source.count_sources_by_subject(db, subject.id)
+    q_norm = (q or "").strip() or None
     offset = (page - 1) * limit
     all_sources = sorted(
         crud_question_source.list_sources_by_subject(db, subject.id),
         key=lambda s: _exam_sort_key(s.file_name, s.exam_code),
     )
+    if q_norm:
+        all_sources = [
+            s
+            for s in all_sources
+            if q_norm in (s.file_name or "").lower() or q_norm in (s.exam_code or "").lower()
+        ]
+    total = len(all_sources)
     rows = all_sources[offset : offset + limit]
     items = [
         {
@@ -1472,12 +1480,12 @@ def merge_deck_into_aggregated_bank(
     }
 
 
-async def list_subjects_page_async(db: AsyncSession, *, page: int, limit: int) -> dict:
-    return await db.run_sync(lambda sync_db: list_subjects_page(sync_db, page=page, limit=limit))
+async def list_subjects_page_async(db: AsyncSession, *, page: int, limit: int, q: str | None = None) -> dict:
+    return await db.run_sync(lambda sync_db: list_subjects_page(sync_db, page=page, limit=limit, q=q))
 
 
-async def get_admin_subject_sources_page_async(db: AsyncSession, slug: str, *, page: int, limit: int) -> dict:
-    return await db.run_sync(lambda sync_db: get_admin_subject_sources_page(sync_db, slug, page=page, limit=limit))
+async def get_admin_subject_sources_page_async(db: AsyncSession, slug: str, *, page: int, limit: int, q: str | None = None) -> dict:
+    return await db.run_sync(lambda sync_db: get_admin_subject_sources_page(sync_db, slug, page=page, limit=limit, q=q))
 
 
 async def get_source_state_async(db: AsyncSession, slug: str) -> dict:

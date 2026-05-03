@@ -59,7 +59,7 @@ def test_get_subjects_empty(monkeypatch):
     monkeypatch.setattr(
         qs,
         "service_list_subjects_page",
-        lambda _db, page, limit: {
+        lambda _db, page, limit, q=None: {
             "items": [],
             "page": page,
             "limit": limit,
@@ -85,7 +85,7 @@ def test_get_subjects_nonempty(monkeypatch):
     monkeypatch.setattr(
         qs,
         "service_list_subjects_page",
-        lambda _db, page, limit: {
+        lambda _db, page, limit, q=None: {
             "items": [{"slug": "pmg201c", "code": "PMG201C", "hint": "Mon luyen de"}],
             "page": page,
             "limit": limit,
