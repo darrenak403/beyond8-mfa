@@ -50,6 +50,25 @@ def _is_aggregated_bank_filename(file_name: str) -> bool:
     return normalized == "cau-hoi-tong-hop.md" or normalized == "cau-hoi-tong-hop"
 
 
+_EXAM_SORT_TERM_ORDER = {"SP": 1, "SU": 2, "FA": 3}
+_EXAM_SORT_TYPE_ORDER = {"FE": 1, "RE": 2, "TE1": 3, "TE2": 4, "BLOCK5": 5, "C1FE": 6, "C2FE": 7, "FINAL": 8}
+
+
+def _exam_sort_key(file_name: str, exam_code: str | None) -> tuple:
+    """Sort key: bank first, then year ASC, term (SP→SU→FA), exam type; unparseable last."""
+    if _is_aggregated_bank_filename(file_name):
+        return (0, 0, 0, 0, "")
+    text = (exam_code or file_name or "").upper()
+    tokens = [tok for tok in re.split(r"[\s\-_]+", text) if tok]
+    term = next((t for t in tokens if t in _EXAM_SORT_TERM_ORDER), None)
+    raw_year = next((t for t in tokens if t.isdigit() and len(t) in (2, 4)), None)
+    exam_type = next((t for t in tokens if t in _EXAM_SORT_TYPE_ORDER), None)
+    if term is None or raw_year is None or exam_type is None:
+        return (2, 9999, 99, 99, (file_name or "").lower())
+    year = int(f"20{raw_year}") if len(raw_year) == 2 else int(raw_year)
+    return (1, year, _EXAM_SORT_TERM_ORDER[term], _EXAM_SORT_TYPE_ORDER[exam_type], (file_name or "").lower())
+
+
 def _subject_code_from_slug(subject_slug: str) -> str:
     if subject_slug.lower() == "prn232":
         return "PRN232"
@@ -326,7 +345,10 @@ def get_admin_subject_sources(db: Session, slug: str) -> list[dict]:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
-    sources = crud_question_source.list_sources_by_subject(db, subject.id)
+    sources = sorted(
+        crud_question_source.list_sources_by_subject(db, subject.id),
+        key=lambda s: _exam_sort_key(s.file_name, s.exam_code),
+    )
     payload = [
         {
             "sourceId": source.id,
@@ -349,7 +371,11 @@ def get_admin_subject_sources_page(db: Session, slug: str, *, page: int, limit: 
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     total = crud_question_source.count_sources_by_subject(db, subject.id)
     offset = (page - 1) * limit
-    rows = crud_question_source.list_sources_by_subject_page(db, subject_id=subject.id, offset=offset, limit=limit)
+    all_sources = sorted(
+        crud_question_source.list_sources_by_subject(db, subject.id),
+        key=lambda s: _exam_sort_key(s.file_name, s.exam_code),
+    )
+    rows = all_sources[offset : offset + limit]
     items = [
         {
             "sourceId": source.id,
@@ -393,7 +419,10 @@ def get_source_state(db: Session, slug: str) -> dict:
         return payload
 
     bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
-    deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
+    deck_sources = sorted(
+        [item for item in sources if not _is_aggregated_bank_filename(item.file_name)],
+        key=lambda s: _exam_sort_key(s.file_name, s.exam_code),
+    )
 
     # Questions are already loaded by optimized query
     bank_questions = questions_by_source.get(bank_source.id, [])
@@ -664,6 +693,8 @@ def get_subject_decks(db: Session, slug: str, *, user_id: str | None = None) -> 
             if user_id
             else {}
         )
+
+    deck_sources = sorted(deck_sources, key=lambda s: _exam_sort_key(s.file_name, s.exam_code))
 
     if not deck_sources:
         subject = crud_question_source.get_subject_by_slug(db, slug)
@@ -1465,7 +1496,10 @@ async def get_source_state_async(db: AsyncSession, slug: str) -> dict:
         cache_service.set_json(cache_key, payload, _CACHE_SUBJECT_READ_TTL_SECONDS)
         return payload
     bank_source = next((item for item in sources if _is_aggregated_bank_filename(item.file_name)), None) or sources[0]
-    deck_sources = [item for item in sources if not _is_aggregated_bank_filename(item.file_name)]
+    deck_sources = sorted(
+        [item for item in sources if not _is_aggregated_bank_filename(item.file_name)],
+        key=lambda s: _exam_sort_key(s.file_name, s.exam_code),
+    )
     bank_questions = questions_by_source.get(bank_source.id, [])
     bank_formatted = [
         {"id": idx, "stem": item["stem"], "options": item["options"], "answer": item["answer"]}
