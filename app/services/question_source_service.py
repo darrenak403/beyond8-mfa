@@ -51,7 +51,8 @@ def _is_aggregated_bank_filename(file_name: str) -> bool:
 
 
 _EXAM_SORT_TERM_ORDER = {"SP": 1, "SU": 2, "FA": 3}
-_EXAM_SORT_TYPE_ORDER = {"FE": 1, "RE": 2, "TE1": 3, "TE2": 4, "BLOCK5": 5, "C1FE": 6, "C2FE": 7, "FINAL": 8}
+# FA2026, FA25, FA 2024, FA-2024, MLN122_SP26_C1FE — \b alone fails on FA+digits (both \w).
+_TERM_YEAR_SORT_PATTERN = re.compile(r"(?<![A-Z])(SP|SU|FA)[\s\-_]*([0-9]{4}|[0-9]{2})(?![0-9])")
 
 
 def filter_subject_deck_payloads_by_q(decks: list[dict], q: str | None) -> list[dict]:
@@ -67,25 +68,24 @@ def filter_subject_deck_payloads_by_q(decks: list[dict], q: str | None) -> list[
 
 
 def _exam_sort_key(file_name: str, exam_code: str | None) -> tuple:
-    """Sort key for ascending sort(): bank first, then newest-first (year DESC, FA→SU→SP, type FINAL→FE), unparseable last."""
+    """Sort key for ascending sort(): bank first, then year DESC, term FA→SU→SP DESC, fileName ASC; unparseable last.
+
+    Ignores exam subtype (FE/RE/PT/Final/…). Parses SP|SU|FA + 2- or 4-digit year from glued or spaced forms.
+    """
     if _is_aggregated_bank_filename(file_name):
-        return (0, 0, 0, 0, "")
+        return (0, 0, 0, "")
     text = (exam_code or file_name or "").upper()
-    tokens = [tok for tok in re.split(r"[\s\-_]+", text) if tok]
-    term = next((t for t in tokens if t in _EXAM_SORT_TERM_ORDER), None)
-    raw_year = next((t for t in tokens if t.isdigit() and len(t) in (2, 4)), None)
-    exam_type = next((t for t in tokens if t in _EXAM_SORT_TYPE_ORDER), None)
-    if term is None or raw_year is None or exam_type is None:
-        return (2, 9999, 99, 99, (file_name or "").lower())
+    m = _TERM_YEAR_SORT_PATTERN.search(text)
+    if m is not None:
+        term, raw_year = m.group(1), m.group(2)
+    else:
+        tokens = [tok for tok in re.split(r"[\s\-_]+", text) if tok]
+        term = next((t for t in tokens if t in _EXAM_SORT_TERM_ORDER), None)
+        raw_year = next((t for t in tokens if t.isdigit() and len(t) in (2, 4)), None)
+        if term is None or raw_year is None:
+            return (2, 9999, 99, (file_name or "").lower())
     year = int(f"20{raw_year}") if len(raw_year) == 2 else int(raw_year)
-    # Negate year / term / type so ascending tuple order = descending chronology within parsed exams.
-    return (
-        1,
-        -year,
-        -_EXAM_SORT_TERM_ORDER[term],
-        -_EXAM_SORT_TYPE_ORDER[exam_type],
-        (file_name or "").lower(),
-    )
+    return (1, -year, -_EXAM_SORT_TERM_ORDER[term], (file_name or "").lower())
 
 
 def _subject_code_from_slug(subject_slug: str) -> str:

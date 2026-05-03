@@ -73,6 +73,44 @@ def test_exam_sort_key_bank_first_then_newest_first_then_unparseable() -> None:
         assert k < weird
 
 
+def test_exam_sort_key_no_exam_type_still_parses() -> None:
+    """Subtype (FE/RE/PT) not required; term+year enough."""
+    sp_plain = _exam_sort_key("x.md", "SP-2024")
+    fa_xyz = _exam_sort_key("y.md", "FA-2025-XYZ")
+    assert sp_plain[0] == 1 and fa_xyz[0] == 1
+    assert fa_xyz < sp_plain  # 2025 before 2024
+
+
+def test_exam_sort_key_glued_term_year_and_abbr() -> None:
+    fa2026 = _exam_sort_key("a.md", "FA2026")
+    fa25 = _exam_sort_key("b.md", "FA25")
+    fa_2024 = _exam_sort_key("c.md", "FA 2024")
+    assert fa2026 < fa25 < fa_2024  # newest year first
+
+
+def test_exam_sort_key_sp26_equals_sp2026() -> None:
+    k26 = _exam_sort_key("MLN122_SP26_C1FE.md", "MLN122_SP26_C1FE")
+    k2026 = _exam_sort_key("other.md", "SP-2026-FE")
+    assert k26[:3] == k2026[:3]
+
+
+def test_exam_sort_key_year_27_before_26() -> None:
+    fa27 = _exam_sort_key("a.md", "FA2027")
+    fa26 = _exam_sort_key("b.md", "FA2026")
+    assert fa27 < fa26
+
+
+def test_exam_sort_key_same_term_year_tiebreak_filename() -> None:
+    fe = _exam_sort_key("MLN122 - SP 2024 - FE.md", "SP-2024-FE")
+    re = _exam_sort_key("MLN122 - SP 2024 - RE.md", "SP-2024-RE")
+    assert fe < re  # same sort prefix; filename lower wins
+
+
+def test_exam_sort_key_mixed_filename_with_block() -> None:
+    k = _exam_sort_key("MLN122 FA25 BLOCK5.md", "MLN122 FA25 BLOCK5")
+    assert k == (1, -2025, -3, "mln122 fa25 block5.md")
+
+
 def test_get_admin_subject_sources_page_filters_by_q(monkeypatch) -> None:
     fake_subject = SimpleNamespace(id="sub-1", slug="mln122", code="MLN122")
     sources = [
