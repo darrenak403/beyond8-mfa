@@ -7,6 +7,7 @@ from app.services import question_source_service
 from app.services.question_source_service import (
     _answer_count_from_payload,
     _exam_sort_key,
+    filter_subject_deck_payloads_by_q,
     get_admin_subject_sources_page,
     _stem_from_markdown_upload_filename,
     check_deck_answer,
@@ -45,6 +46,17 @@ def test_stem_from_markdown_upload_filename_strips_md() -> None:
     assert _stem_from_markdown_upload_filename("SWE201c - FA 2024 - FE.md") == "SWE201c - FA 2024 - FE"
     assert _stem_from_markdown_upload_filename("  SWE201c - FA 2024 - FE.MD  ") == "SWE201c - FA 2024 - FE"
     assert _stem_from_markdown_upload_filename("MLN111C2 - SU 2025 - FEKTS.md") == "MLN111C2 - SU 2025 - FEKTS"
+
+
+def test_filter_subject_deck_payloads_by_q() -> None:
+    decks = [
+        {"deckId": "1", "examCode": "SP-2024-FE", "fileName": "a.md"},
+        {"deckId": "2", "examCode": "FA-2024-FE", "fileName": "b.md"},
+    ]
+    assert len(filter_subject_deck_payloads_by_q(decks, "  sp  ")) == 1
+    assert filter_subject_deck_payloads_by_q(decks, "  sp  ")[0]["deckId"] == "1"
+    assert len(filter_subject_deck_payloads_by_q(decks, None)) == 2
+    assert len(filter_subject_deck_payloads_by_q(decks, "")) == 2
 
 
 def test_exam_sort_key_bank_first_then_newest_first_then_unparseable() -> None:

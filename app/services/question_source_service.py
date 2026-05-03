@@ -54,6 +54,18 @@ _EXAM_SORT_TERM_ORDER = {"SP": 1, "SU": 2, "FA": 3}
 _EXAM_SORT_TYPE_ORDER = {"FE": 1, "RE": 2, "TE1": 3, "TE2": 4, "BLOCK5": 5, "C1FE": 6, "C2FE": 7, "FINAL": 8}
 
 
+def filter_subject_deck_payloads_by_q(decks: list[dict], q: str | None) -> list[dict]:
+    """Giữ deck dicts khớp substring `q` trên fileName / examCode (giống admin list sources)."""
+    q_norm = (q or "").strip() or None
+    if not q_norm:
+        return decks
+    return [
+        d
+        for d in decks
+        if q_norm in (d.get("fileName") or "").lower() or q_norm in (d.get("examCode") or "").lower()
+    ]
+
+
 def _exam_sort_key(file_name: str, exam_code: str | None) -> tuple:
     """Sort key for ascending sort(): bank first, then newest-first (year DESC, FA→SU→SP, type FINAL→FE), unparseable last."""
     if _is_aggregated_bank_filename(file_name):

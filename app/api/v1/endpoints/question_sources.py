@@ -25,6 +25,7 @@ from app.schemas.question_source import (
 )
 from app.utils.pagination import DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate_slice
 from app.services.question_source_facade import question_source_service
+from app.services.question_source_service import filter_subject_deck_payloads_by_q
 
 # Keep dependency overrides stable for existing tests/clients while async service
 # migration happens under the hood.
@@ -190,11 +191,18 @@ async def subject_decks(
     current_user: User = Depends(require_course_access),
     page: int = Query(default=DEFAULT_PAGE, ge=1),
     limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    q: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Search file_name / exam_code (case-insensitive substring), same as admin sources",
+    ),
 ):
     if settings.enable_async_database and isinstance(db, AsyncSession):
         full = await get_subject_decks_async(db, slug, user_id=current_user.id)
     else:
         full = get_subject_decks(db, slug, user_id=current_user.id)
+    full = filter_subject_deck_payloads_by_q(full, q)
     return success_response(data=paginate_slice(full, page=page, limit=limit))
 
 
