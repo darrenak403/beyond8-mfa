@@ -3,6 +3,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_access_token, is_course_access_payload_active
 from app.crud import crud_user
 from app.db.session import get_db
@@ -16,6 +17,15 @@ course_access_header_scheme = APIKeyHeader(
 )
 _AUTH_TOKEN_COOKIE_CANDIDATES = ("auth_token",)
 _COURSE_ACCESS_COOKIE_CANDIDATES = ("beyond8_course_access",)
+
+
+def _is_seed_admin_email(user: User) -> bool:
+    """Bootstrap admin may log in from multiple devices; skip single-session enforcement."""
+    expected = (settings.seed_admin_email or "").strip().lower()
+    if not expected:
+        return False
+    raw = getattr(user, "email", None) or ""
+    return raw.strip().lower() == expected
 
 
 def _extract_bearer_token(
@@ -111,11 +121,12 @@ def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản đã bị khóa",
         )
-    if not user.active_session_id or user.active_session_id != session_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Phiên đăng nhập không còn hợp lệ.",
-        )
+    if not _is_seed_admin_email(user):
+        if not user.active_session_id or user.active_session_id != session_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Phiên đăng nhập không còn hợp lệ.",
+            )
 
     return user
 
@@ -162,7 +173,11 @@ def get_current_course_user(
         revoked_at=user.course_access_revoked_at,
     ):
         raise credentials_exception
-    if session_id and (not user.active_session_id or session_id != user.active_session_id):
+    if (
+        session_id
+        and not _is_seed_admin_email(user)
+        and (not user.active_session_id or session_id != user.active_session_id)
+    ):
         raise credentials_exception
 
     return user

@@ -25,6 +25,27 @@ def test_get_current_user_rejects_course_access_token(monkeypatch) -> None:
     assert exc.value.detail == "Could not validate credentials"
 
 
+def test_get_current_user_seed_admin_ignores_session_rotation(monkeypatch) -> None:
+    """admin@gmail.com (seed admin) may stay logged in on multiple devices."""
+    fake_db = Mock()
+    fake_user = SimpleNamespace(
+        id="admin-1",
+        is_active=True,
+        active_session_id="session-newest",
+        email="admin@gmail.com",
+    )
+    monkeypatch.setattr(
+        deps,
+        "decode_access_token",
+        lambda _token: {"sub": "admin-1", "role": "admin", "email": "admin@gmail.com", "sid": "session-older"},
+    )
+    monkeypatch.setattr(deps.crud_user, "get_by_id", lambda _db, _id: fake_user)
+
+    request = SimpleNamespace(cookies={"auth_token": "auth-token"}, headers={})
+    user = deps.get_current_user(request=request, db=fake_db, credentials=None)
+    assert user.id == "admin-1"
+
+
 def test_get_current_user_accepts_auth_token_cookie(monkeypatch) -> None:
     fake_db = Mock()
     fake_user = SimpleNamespace(id="user-1", is_active=True, active_session_id="session-1")
