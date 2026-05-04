@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class UploadSourceResponse(BaseModel):
@@ -105,6 +105,20 @@ class SourceQuestionUpdateInput(BaseModel):
 
 class SourceQuestionBulkUpdateRequest(BaseModel):
     questions: list[SourceQuestionUpdateInput]
+
+
+class AdminPatchQuestionRequest(BaseModel):
+    """At least one field must be set."""
+
+    stem: str | None = None
+    options: list[SourceQuestionOptionInput] | None = None
+    answer: str | None = None
+
+    @model_validator(mode="after")
+    def at_least_one_field(self) -> "AdminPatchQuestionRequest":
+        if self.stem is None and self.options is None and self.answer is None:
+            raise ValueError("At least one of stem, options, or answer is required.")
+        return self
 
 
 class DeckStatsUpdateRequest(BaseModel):

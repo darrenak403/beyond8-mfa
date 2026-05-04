@@ -540,6 +540,39 @@ class CRUDQuestionSource:
             select(Question).where(Question.source_id == source_id, Question.ordinal == ordinal)
         ).scalar_one_or_none()
 
+    def list_questions_by_normalized_hash(
+        self, db: Session, *, source_id: str, normalized_hash: str
+    ) -> list[Question]:
+        """All question rows in a source sharing the same normalized_hash (dedupe key used by bank merge)."""
+        return list(
+            db.execute(
+                select(Question).where(Question.source_id == source_id, Question.normalized_hash == normalized_hash)
+            )
+            .scalars()
+            .all()
+        )
+
+    def update_question_content(
+        self,
+        db: Session,
+        *,
+        question: Question,
+        stem: str,
+        options_json: list[dict],
+        answers_json: list[str],
+        answer_text: str,
+        normalized_hash: str,
+    ) -> Question:
+        """Update a single question row in place (preserves id / ordinal)."""
+        question.stem = stem
+        question.options_json = options_json
+        question.answers_json = answers_json
+        question.answer_text = answer_text
+        question.normalized_hash = normalized_hash
+        db.add(question)
+        db.flush()
+        return question
+
     def get_source_state_optimized(self, db: Session, slug: str) -> tuple[list[QuestionSource], dict[str, list[dict]]]:
         """
         Optimized query that fetches sources and their questions in a single query using JOIN.

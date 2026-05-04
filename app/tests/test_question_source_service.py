@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 from app.services import question_source_service
 from app.services.question_source_service import (
@@ -20,9 +20,11 @@ from app.services.question_source_service import (
     merge_deck_into_aggregated_bank,
     merge_deck_into_aggregated_bank_preview,
     parse_questions,
+    patch_source_question,
     reset_deck_progress,
     update_deck_progress,
     update_deck_stats,
+    update_source_questions,
 )
 
 
@@ -661,3 +663,126 @@ def test_merge_deck_into_aggregated_bank_creates_bank_when_absent(monkeypatch) -
     assert last_kw["source_id"] == "bank-new"
     assert len(last_kw["payload"]) == 1
     assert last_kw["payload"][0]["ordinal"] == 1
+
+
+def test_patch_source_question_updates_matching_bank_rows(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="MLN111 - FA 2024 - FE.md", exam_code="X")
+    bank = SimpleNamespace(id="bank-1", file_name="cau-hoi-tong-hop.md")
+    old_h = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    deck_q = SimpleNamespace(
+        stem="Old stem",
+        options_json=[{"label": "A", "text": "x"}],
+        answer_text="A",
+        normalized_hash=old_h,
+    )
+    bank_q = SimpleNamespace(
+        stem="Old stem",
+        options_json=[{"label": "A", "text": "x"}],
+        answer_text="A",
+        normalized_hash=old_h,
+    )
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    fake_crud.get_question_by_ordinal.return_value = deck_q
+    fake_crud.list_questions_by_normalized_hash.return_value = [bank_q]
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: bank)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    patch_source_question(
+        Mock(),
+        slug="mln111",
+        source_id="deck-1",
+        ordinal=1,
+        stem="New stem for bank sync",
+        options=None,
+        answer=None,
+    )
+
+    assert fake_crud.update_question_content.call_count == 2
+    first = fake_crud.update_question_content.call_args_list[0].kwargs
+    second = fake_crud.update_question_content.call_args_list[1].kwargs
+    assert first["question"] is deck_q
+    assert second["question"] is bank_q
+    assert first["stem"] == second["stem"] == "New stem for bank sync"
+    fake_crud.list_questions_by_normalized_hash.assert_called_once_with(
+        ANY, source_id="bank-1", normalized_hash=old_h
+    )
+
+
+def test_patch_source_question_skips_bank_when_editing_aggregated_file(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    bank_source = SimpleNamespace(
+        id="bank-1",
+        file_name="cau-hoi-tong-hop.md",
+        exam_code="AGG-BANK",
+    )
+    q = SimpleNamespace(
+        stem="Stem",
+        options_json=[{"label": "A", "text": "x"}],
+        answer_text="A",
+        normalized_hash="sha256:aa",
+    )
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = bank_source
+    fake_crud.get_question_by_ordinal.return_value = q
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    patch_source_question(Mock(), slug="mln111", source_id="bank-1", ordinal=1, stem="Edited", options=None, answer=None)
+
+    assert fake_crud.update_question_content.call_count == 1
+    fake_crud.list_questions_by_normalized_hash.assert_not_called()
+
+
+def test_update_source_questions_remerges_bank_when_present(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="deck.md", exam_code="X")
+    merge_calls: list[tuple] = []
+
+    def fake_merge(db, *, slug, deck_source_id, uploader_id):
+        merge_calls.append((slug, deck_source_id, uploader_id))
+
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: SimpleNamespace(id="bank-1"))
+    monkeypatch.setattr(question_source_service, "merge_deck_into_aggregated_bank", fake_merge)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    update_source_questions(
+        Mock(),
+        "mln111",
+        "deck-1",
+        [{"stem": "Q", "options": [{"label": "A", "text": "a"}], "answer": "A"}],
+    )
+    assert merge_calls == [("mln111", "deck-1", None)]
+
+
+def test_update_source_questions_skips_merge_when_no_bank(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="deck.md", exam_code="X")
+    merge_calls: list[int] = []
+
+    def fake_merge(*_a, **_k):
+        merge_calls.append(1)
+
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: None)
+    monkeypatch.setattr(question_source_service, "merge_deck_into_aggregated_bank", fake_merge)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    update_source_questions(
+        Mock(),
+        "mln111",
+        "deck-1",
+        [{"stem": "Q", "options": [{"label": "A", "text": "a"}], "answer": "A"}],
+    )
+    assert merge_calls == []

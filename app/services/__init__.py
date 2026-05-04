@@ -20,7 +20,9 @@ from app.services.question_source_service import (
     update_deck_progress,
     update_deck_stats,
     upsert_source_from_markdown_by_slug,
+    patch_source_question,
     update_source_questions,
+    update_source_questions_async,
     update_source_from_markdown,
 )
 from app.services.stats_service import stats_service
@@ -48,6 +50,8 @@ __all__ = [
     "update_deck_progress",
     "update_deck_stats",
     "upsert_source_from_markdown_by_slug",
+    "patch_source_question",
     "update_source_questions",
+    "update_source_questions_async",
     "update_source_from_markdown",
 ]

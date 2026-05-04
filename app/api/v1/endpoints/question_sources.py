@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
     AdminEnsureSubjectRequest,
+    AdminPatchQuestionRequest,
     AnswerCheckRequest,
     AnswerCheckResponse,
     DeckProgressUpdateRequest,
@@ -18,6 +19,7 @@ from app.schemas.question_source import (
     DeckStatsUpdateRequest,
     MergeBankPreviewResponse,
     MergeIntoBankResponse,
+    SourceQuestionBulkUpdateRequest,
     SourceStateQuestion,
     SourceStateResponse,
     SubjectSummary,
@@ -70,6 +72,10 @@ delete_source = question_source_service.delete_source
 merge_deck_into_aggregated_bank_preview = question_source_service.merge_deck_into_aggregated_bank_preview
 merge_deck_into_aggregated_bank = question_source_service.merge_deck_into_aggregated_bank
 ensure_admin_subject = question_source_service.ensure_admin_subject
+update_source_questions = question_source_service.update_source_questions
+update_source_questions_async = question_source_service.update_source_questions_async
+patch_source_question = question_source_service.patch_source_question
+patch_source_question_async = question_source_service.patch_source_question_async
 
 
 @user_router.get(
@@ -147,6 +153,97 @@ async def admin_subject_sources(
     else:
         data = get_admin_subject_sources_page(db, slug, page=page, limit=limit, q=q)
     return success_response(data=data)
+
+
+@admin_router.get(
+    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions",
+    response_model=ApiResponse[Any],
+    summary="Admin: list questions for a source (paginated)",
+)
+async def admin_source_questions(
+    slug: str,
+    source_id: str,
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+    page: int = Query(default=DEFAULT_PAGE, ge=1),
+    limit: int = Query(
+        default=DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description="Page size (max 100; same shape as user deck questions).",
+    ),
+):
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await get_deck_questions_page_async(db, slug, source_id, page=page, limit=limit)
+    else:
+        data = get_deck_questions_page(db, slug, source_id, page=page, limit=limit)
+    return success_response(data=data)
+
+
+@admin_router.put(
+    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions",
+    response_model=ApiResponse[dict],
+    summary="Admin: replace all questions for a source",
+)
+async def admin_replace_source_questions(
+    slug: str,
+    source_id: str,
+    payload: SourceQuestionBulkUpdateRequest,
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+):
+    questions = [
+        {
+            "stem": q.stem,
+            "options": [{"label": o.label, "text": o.text} for o in q.options],
+            "answer": q.answer,
+        }
+        for q in payload.questions
+    ]
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await update_source_questions_async(db, slug, source_id, questions)
+    else:
+        data = update_source_questions(db, slug, source_id, questions)
+    return success_response(data=data, message="Source questions replaced successfully")
+
+
+@admin_router.patch(
+    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions/{ordinal}",
+    response_model=ApiResponse[dict],
+    summary="Admin: update a single question by ordinal",
+)
+async def admin_patch_source_question_endpoint(
+    slug: str,
+    source_id: str,
+    ordinal: int = Path(ge=1),
+    payload: AdminPatchQuestionRequest = ...,
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+):
+    opts: list[dict] | None = None
+    if payload.options is not None:
+        opts = [{"label": o.label, "text": o.text} for o in payload.options]
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await patch_source_question_async(
+            db,
+            slug=slug,
+            source_id=source_id,
+            ordinal=ordinal,
+            stem=payload.stem,
+            options=opts,
+            answer=payload.answer,
+        )
+    else:
+        data = patch_source_question(
+            db,
+            slug=slug,
+            source_id=source_id,
+            ordinal=ordinal,
+            stem=payload.stem,
+            options=opts,
+            answer=payload.answer,
+        )
+    return success_response(data=data, message="Question updated successfully")
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])

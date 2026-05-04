@@ -176,5 +176,41 @@ class QuestionSourceService:
     def ensure_admin_subject(self, db: Session, *, slug: str):
         return legacy.ensure_admin_subject(db, slug=slug)
 
+    def update_source_questions(self, db: Session, slug: str, source_id: str, questions: list[dict]):
+        return legacy.update_source_questions(db, slug, source_id, questions)
+
+    async def update_source_questions_async(self, db: AsyncSession, slug: str, source_id: str, questions: list[dict]):
+        return await legacy.update_source_questions_async(db, slug, source_id, questions)
+
+    def patch_source_question(
+        self,
+        db: Session,
+        *,
+        slug: str,
+        source_id: str,
+        ordinal: int,
+        stem: str | None,
+        options: list[dict] | None,
+        answer: str | None,
+    ):
+        return legacy.patch_source_question(
+            db, slug=slug, source_id=source_id, ordinal=ordinal, stem=stem, options=options, answer=answer
+        )
+
+    async def patch_source_question_async(
+        self,
+        db: AsyncSession,
+        *,
+        slug: str,
+        source_id: str,
+        ordinal: int,
+        stem: str | None,
+        options: list[dict] | None,
+        answer: str | None,
+    ):
+        return await legacy.patch_source_question_async(
+            db, slug=slug, source_id=source_id, ordinal=ordinal, stem=stem, options=options, answer=answer
+        )
+
 
 question_source_service = QuestionSourceService()

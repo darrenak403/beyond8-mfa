@@ -1117,6 +1117,21 @@ def check_deck_answer(
     }
 
 
+def _normalize_question_dict_for_source(stem: str, options: list, answer_text: str) -> dict:
+    """Normalize stem/options/answer_text for storage (matches bulk replace row shape, without ordinal)."""
+    answers = [part.strip().upper() for part in re.split(r"[;,/]+", answer_text) if part.strip()]
+    normalized_options = [{"label": str(op.get("label", "")).strip(), "text": str(op.get("text", "")).strip()} for op in options]
+    hash_source = f"{stem}|{normalized_options}|{answer_text}".encode("utf-8")
+    normalized_hash = f"sha256:{hashlib.sha256(hash_source).hexdigest()}"
+    return {
+        "stem": stem,
+        "options": normalized_options,
+        "answers": answers,
+        "answer_text": answer_text,
+        "normalized_hash": normalized_hash,
+    }
+
+
 def update_source_questions(db: Session, slug: str, source_id: str, questions: list[dict]) -> dict:
     subject = crud_question_source.get_subject_by_slug(db, slug)
     if subject is None:
@@ -1141,18 +1156,15 @@ def update_source_questions(db: Session, slug: str, source_id: str, questions: l
             warnings.append(f"Question #{idx} has no options.")
         if not answer_text:
             warnings.append(f"Question #{idx} has no explicit answer.")
-        answers = [part.strip().upper() for part in re.split(r"[;,/]+", answer_text) if part.strip()]
-        normalized_options = [{"label": str(op.get("label", "")).strip(), "text": str(op.get("text", "")).strip()} for op in options]
-        hash_source = f"{stem}|{normalized_options}|{answer_text}".encode("utf-8")
-        normalized_hash = f"sha256:{hashlib.sha256(hash_source).hexdigest()}"
+        parts = _normalize_question_dict_for_source(stem, options, answer_text)
         normalized.append(
             {
                 "ordinal": idx,
-                "stem": stem,
-                "options": normalized_options,
-                "answers": answers,
-                "answer_text": answer_text,
-                "normalized_hash": normalized_hash,
+                "stem": parts["stem"],
+                "options": parts["options"],
+                "answers": parts["answers"],
+                "answer_text": parts["answer_text"],
+                "normalized_hash": parts["normalized_hash"],
             }
         )
 
@@ -1160,6 +1172,13 @@ def update_source_questions(db: Session, slug: str, source_id: str, questions: l
     crud_question_source.update_source_question_stats(
         db, source=source, question_count=len(normalized), warnings=warnings
     )
+
+    # If this subject has an aggregated bank, re-merge this deck so `cau-hoi-tong-hop` matches the replaced deck.
+    if not _is_aggregated_bank_filename(source.file_name):
+        bank = _get_aggregated_bank_source(db, subject.id)
+        if bank is not None:
+            merge_deck_into_aggregated_bank(db, slug=subject.slug, deck_source_id=source.id, uploader_id=None)
+
     subject_slug = subject.slug
     _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
     return {
@@ -1169,6 +1188,79 @@ def update_source_questions(db: Session, slug: str, source_id: str, questions: l
         "fileName": source.file_name,
         "questionCount": len(normalized),
         "warnings": warnings,
+    }
+
+
+def patch_source_question(
+    db: Session,
+    *,
+    slug: str,
+    source_id: str,
+    ordinal: int,
+    stem: str | None,
+    options: list[dict] | None,
+    answer: str | None,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=source_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SOURCE_NOT_FOUND", "Source not found for subject.")
+
+    question = crud_question_source.get_question_by_ordinal(db, source_id=source.id, ordinal=ordinal)
+    if question is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "QUESTION_NOT_FOUND", "Question not found for this source.")
+
+    final_stem = stem.strip() if stem is not None else question.stem
+    if options is not None:
+        opt_list = [{"label": str(o.get("label", "")).strip(), "text": str(o.get("text", "")).strip()} for o in options]
+    else:
+        opt_list = list(question.options_json or [])
+
+    final_answer_text = answer.strip() if answer is not None else question.answer_text
+
+    if not final_stem:
+        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_QUESTION", "Question stem must not be empty.")
+
+    old_normalized_hash = question.normalized_hash
+    parts = _normalize_question_dict_for_source(final_stem, opt_list, final_answer_text)
+    crud_question_source.update_question_content(
+        db,
+        question=question,
+        stem=parts["stem"],
+        options_json=parts["options"],
+        answers_json=parts["answers"],
+        answer_text=parts["answer_text"],
+        normalized_hash=parts["normalized_hash"],
+    )
+
+    # Keep `cau-hoi-tong-hop` in sync: bank merge dedupes by normalized_hash; update any bank row that matched the pre-edit hash.
+    if not _is_aggregated_bank_filename(source.file_name):
+        bank = _get_aggregated_bank_source(db, subject.id)
+        if bank is not None:
+            for bank_q in crud_question_source.list_questions_by_normalized_hash(
+                db, source_id=bank.id, normalized_hash=old_normalized_hash
+            ):
+                crud_question_source.update_question_content(
+                    db,
+                    question=bank_q,
+                    stem=parts["stem"],
+                    options_json=parts["options"],
+                    answers_json=parts["answers"],
+                    answer_text=parts["answer_text"],
+                    normalized_hash=parts["normalized_hash"],
+                )
+
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
+    return {
+        "sourceId": source.id,
+        "subjectSlug": subject.slug,
+        "examCode": source.exam_code,
+        "fileName": source.file_name,
+        "ordinal": ordinal,
     }
 
 
@@ -1595,6 +1687,35 @@ async def get_subject_decks_async(db: AsyncSession, slug: str, *, user_id: str |
 
 async def get_deck_questions_page_async(db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int) -> dict:
     return await db.run_sync(lambda sync_db: get_deck_questions_page(sync_db, slug, deck_id, page=page, limit=limit))
+
+
+async def update_source_questions_async(
+    db: AsyncSession, slug: str, source_id: str, questions: list[dict]
+) -> dict:
+    return await db.run_sync(lambda sync_db: update_source_questions(sync_db, slug, source_id, questions))
+
+
+async def patch_source_question_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    source_id: str,
+    ordinal: int,
+    stem: str | None,
+    options: list[dict] | None,
+    answer: str | None,
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: patch_source_question(
+            sync_db,
+            slug=slug,
+            source_id=source_id,
+            ordinal=ordinal,
+            stem=stem,
+            options=options,
+            answer=answer,
+        )
+    )
 
 
 async def check_deck_answer_async(

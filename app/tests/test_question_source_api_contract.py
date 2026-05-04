@@ -26,6 +26,15 @@ class _FakeUser:
         return "user"
 
 
+class _FakeAdmin:
+    id = "00000000-0000-0000-0000-000000000002"
+    is_active = True
+
+    @property
+    def role_name(self) -> str:
+        return "admin"
+
+
 def _install_overrides() -> None:
     def _mock_get_db():
         yield Mock()
@@ -420,3 +429,119 @@ def test_put_deck_stats_ok(monkeypatch):
         json={"inProgress": 1, "completed": 0},
     )
     assert response.status_code == 200
+
+
+def _with_admin():
+    app.dependency_overrides[deps.get_current_admin] = lambda: _FakeAdmin()
+
+
+def _clear_admin():
+    app.dependency_overrides.pop(deps.get_current_admin, None)
+
+
+def test_admin_get_source_questions_ok(monkeypatch):
+    _with_admin()
+    try:
+
+        def _page(_db, slug, source_id, page, limit):
+            assert slug == "mln111"
+            assert source_id == "s1"
+            return {
+                "items": [
+                    {
+                        "id": 1,
+                        "stem": "Q1",
+                        "options": [{"label": "A", "text": "a"}],
+                        "answer": "A",
+                        "answerCount": 1,
+                        "imageUrl": None,
+                    }
+                ],
+                "page": page,
+                "limit": limit,
+                "total": 1,
+                "totalPages": 1,
+                "hasNext": False,
+                "hasPrevious": False,
+            }
+
+        monkeypatch.setattr(qs, "get_deck_questions_page", _page)
+        response = _run("GET", "/api/v1/admin/question-sources/subjects/mln111/sources/s1/questions")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["items"][0]["stem"] == "Q1"
+        assert data["total"] == 1
+    finally:
+        _clear_admin()
+
+
+def test_admin_put_source_questions_ok(monkeypatch):
+    _with_admin()
+    try:
+        called: dict = {}
+
+        def _put(_db, slug, source_id, questions):
+            called["slug"] = slug
+            called["source_id"] = source_id
+            called["n"] = len(questions)
+            return {
+                "sourceId": source_id,
+                "subjectSlug": slug,
+                "examCode": "E1",
+                "fileName": "f.md",
+                "questionCount": len(questions),
+                "warnings": [],
+            }
+
+        monkeypatch.setattr(qs, "update_source_questions", _put)
+        response = _run(
+            "PUT",
+            "/api/v1/admin/question-sources/subjects/mln111/sources/s1/questions",
+            json={
+                "questions": [
+                    {
+                        "stem": "Hi",
+                        "options": [{"label": "A", "text": "a"}],
+                        "answer": "A",
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 200
+        assert called["slug"] == "mln111"
+        assert called["source_id"] == "s1"
+        assert called["n"] == 1
+        assert response.json()["data"]["questionCount"] == 1
+    finally:
+        _clear_admin()
+
+
+def test_admin_patch_source_question_ok(monkeypatch):
+    _with_admin()
+    try:
+
+        def _patch(_db, **kwargs):
+            assert kwargs["slug"] == "mln111"
+            assert kwargs["source_id"] == "s1"
+            assert kwargs["ordinal"] == 3
+            assert kwargs["stem"] == "New stem"
+            assert kwargs["options"] is None
+            assert kwargs["answer"] is None
+            return {
+                "sourceId": "s1",
+                "subjectSlug": "mln111",
+                "examCode": "E1",
+                "fileName": "f.md",
+                "ordinal": 3,
+            }
+
+        monkeypatch.setattr(qs, "patch_source_question", _patch)
+        response = _run(
+            "PATCH",
+            "/api/v1/admin/question-sources/subjects/mln111/sources/s1/questions/3",
+            json={"stem": "New stem"},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["ordinal"] == 3
+    finally:
+        _clear_admin()
