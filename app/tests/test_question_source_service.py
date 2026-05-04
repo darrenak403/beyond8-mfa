@@ -689,6 +689,12 @@ def test_patch_source_question_updates_matching_bank_rows(monkeypatch) -> None:
     fake_crud.list_questions_by_normalized_hash.return_value = [bank_q]
     monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
     monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: bank)
+    merge_calls: list[tuple] = []
+
+    def fake_merge(db, *, slug, deck_source_id, uploader_id):
+        merge_calls.append((slug, deck_source_id, uploader_id))
+
+    monkeypatch.setattr(question_source_service, "merge_deck_into_aggregated_bank", fake_merge)
     monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
 
     patch_source_question(
@@ -701,6 +707,7 @@ def test_patch_source_question_updates_matching_bank_rows(monkeypatch) -> None:
         answer=None,
     )
 
+    assert merge_calls == [("mln111", "deck-1", None)]
     assert fake_crud.update_question_content.call_count == 2
     first = fake_crud.update_question_content.call_args_list[0].kwargs
     second = fake_crud.update_question_content.call_args_list[1].kwargs
@@ -900,9 +907,103 @@ def test_delete_source_question_replaces_remaining(monkeypatch) -> None:
     fake_crud.list_source_questions_payload.return_value = rows
     monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
     monkeypatch.setattr(question_source_service, "update_source_questions", fake_update)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: None)
     monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
 
     question_source_service.delete_source_question(Mock(), slug="mln111", source_id="deck-1", ordinal=1)
     assert len(captured) == 1
     assert len(captured[0]) == 1
     assert captured[0][0]["stem"] == "Second"
+
+
+def test_prune_bank_row_if_hash_orphaned_replaces_bank(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1")
+    bank = SimpleNamespace(id="bank-1", file_name="cau-hoi-tong-hop.md")
+    deck = SimpleNamespace(id="deck-1", file_name="exam.md")
+    H = "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    bank_rows = [
+        {
+            "ordinal": 1,
+            "stem": "keep",
+            "options": [],
+            "answer": "A",
+            "answers": ["A"],
+            "imageUrl": None,
+            "normalized_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        },
+        {
+            "ordinal": 2,
+            "stem": "gone",
+            "options": [],
+            "answer": "A",
+            "answers": ["A"],
+            "imageUrl": None,
+            "normalized_hash": H,
+        },
+    ]
+    fake_crud = Mock()
+    fake_crud.list_sources_by_subject.return_value = [deck]
+
+    def lp(_db, sid: str):
+        if sid == bank.id:
+            return bank_rows
+        if sid == deck.id:
+            return []
+        return []
+
+    fake_crud.list_source_questions_payload.side_effect = lp
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    question_source_service._prune_bank_row_if_hash_orphaned(Mock(), subject=subject, bank=bank, normalized_hash=H)
+    fake_crud.replace_source_questions.assert_called_once()
+    payload = fake_crud.replace_source_questions.call_args.kwargs["payload"]
+    assert len(payload) == 1
+    assert payload[0]["ordinal"] == 1
+    assert payload[0]["normalized_hash"] == "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    fake_crud.update_source_question_stats.assert_called_once()
+
+
+def test_prune_bank_row_if_hash_orphaned_skips_when_other_deck_has_hash(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1")
+    bank = SimpleNamespace(id="bank-1", file_name="cau-hoi-tong-hop.md")
+    d1 = SimpleNamespace(id="deck-1", file_name="a.md")
+    d2 = SimpleNamespace(id="deck-2", file_name="b.md")
+    H = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    bank_rows = [
+        {
+            "ordinal": 1,
+            "stem": "bank q",
+            "options": [],
+            "answer": "A",
+            "answers": ["A"],
+            "imageUrl": None,
+            "normalized_hash": H,
+        },
+    ]
+    fake_crud = Mock()
+    fake_crud.list_sources_by_subject.return_value = [d1, d2]
+
+    def lp(_db, sid: str):
+        if sid == bank.id:
+            return bank_rows
+        if sid == d1.id:
+            return []
+        if sid == d2.id:
+            return [
+                {
+                    "ordinal": 1,
+                    "stem": "other",
+                    "options": [],
+                    "answer": "A",
+                    "answers": ["A"],
+                    "imageUrl": None,
+                    "normalized_hash": H,
+                },
+            ]
+        return []
+
+    fake_crud.list_source_questions_payload.side_effect = lp
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+
+    question_source_service._prune_bank_row_if_hash_orphaned(Mock(), subject=subject, bank=bank, normalized_hash=H)
+    fake_crud.replace_source_questions.assert_not_called()

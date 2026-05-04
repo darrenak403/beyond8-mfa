@@ -1266,6 +1266,7 @@ def patch_source_question(
                     answer_text=parts["answer_text"],
                     normalized_hash=parts["normalized_hash"],
                 )
+            merge_deck_into_aggregated_bank(db, slug=subject.slug, deck_source_id=source.id, uploader_id=None)
 
     subject_slug = subject.slug
     _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
@@ -1374,6 +1375,8 @@ def delete_source_question(db: Session, *, slug: str, source_id: str, ordinal: i
         raise _error(status.HTTP_404_NOT_FOUND, "SOURCE_NOT_FOUND", "Source not found for subject.")
 
     rows = crud_question_source.list_source_questions_payload(db, source.id)
+    removed_row = next((r for r in rows if int(r.get("ordinal") or 0) == ordinal), None)
+    removed_hash = (removed_row or {}).get("normalized_hash") or ""
     filtered = [r for r in rows if int(r.get("ordinal") or 0) != ordinal]
     if len(filtered) == len(rows):
         raise _error(status.HTTP_404_NOT_FOUND, "QUESTION_NOT_FOUND", "Question not found for this source.")
@@ -1385,6 +1388,8 @@ def delete_source_question(db: Session, *, slug: str, source_id: str, ordinal: i
             bank = _get_aggregated_bank_source(db, subject.id)
             if bank is not None:
                 merge_deck_into_aggregated_bank(db, slug=subject.slug, deck_source_id=source.id, uploader_id=None)
+                if removed_hash:
+                    _prune_bank_row_if_hash_orphaned(db, subject=subject, bank=bank, normalized_hash=removed_hash)
         subject_slug = subject.slug
         _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
         return {
@@ -1399,6 +1404,12 @@ def delete_source_question(db: Session, *, slug: str, source_id: str, ordinal: i
         {"stem": r["stem"], "options": r["options"], "answer": r["answer"]} for r in filtered
     ]
     out = update_source_questions(db, slug, source_id, questions_for_replace)
+    if not _is_aggregated_bank_filename(source.file_name) and removed_hash:
+        bank = _get_aggregated_bank_source(db, subject.id)
+        if bank is not None:
+            _prune_bank_row_if_hash_orphaned(db, subject=subject, bank=bank, normalized_hash=removed_hash)
+            subject_slug = subject.slug
+            _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
     return {
         "sourceId": out["sourceId"],
         "subjectSlug": out["subjectSlug"],
@@ -1624,6 +1635,40 @@ def _question_row_to_replace_payload(item: dict, ordinal: int) -> dict:
         "answer_text": item.get("answer_text") or item.get("answer") or "",
         "normalized_hash": item["normalized_hash"],
     }
+
+
+def _normalized_hash_present_in_any_deck(db: Session, subject_id: str, normalized_hash: str) -> bool:
+    if not normalized_hash:
+        return False
+    for src in crud_question_source.list_sources_by_subject(db, subject_id):
+        if _is_aggregated_bank_filename(src.file_name):
+            continue
+        for row in crud_question_source.list_source_questions_payload(db, src.id):
+            if row.get("normalized_hash") == normalized_hash:
+                return True
+    return False
+
+
+def _prune_bank_row_if_hash_orphaned(
+    db: Session,
+    *,
+    subject,
+    bank,
+    normalized_hash: str,
+) -> None:
+    """Drop bank rows for this hash when no non-bank deck still has that question (bank-only rows unchanged)."""
+    if not normalized_hash:
+        return
+    if _normalized_hash_present_in_any_deck(db, subject.id, normalized_hash):
+        return
+    bank_rows = crud_question_source.list_source_questions_payload(db, bank.id)
+    kept = [r for r in bank_rows if r.get("normalized_hash") != normalized_hash]
+    if len(kept) == len(bank_rows):
+        return
+    payload = [_question_row_to_replace_payload(row, i) for i, row in enumerate(kept, start=1)]
+    crud_question_source.replace_source_questions(db, source_id=bank.id, payload=payload)
+    crud_question_source.update_source_question_stats(db, source=bank, question_count=len(payload), warnings=[])
+    db.flush()
 
 
 def _compute_merge_deck_into_bank_payload(
