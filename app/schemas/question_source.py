@@ -168,3 +168,34 @@ class MergeIntoBankResponse(BaseModel):
     added: int
     skippedDuplicate: int
     bankQuestionCount: int
+
+
+class BankCheckDuplicateRequest(BaseModel):
+    """One question payload; hash is computed server-side to match `cau-hoi-tong-hop` dedupe."""
+
+    stem: str
+    options: list[SourceQuestionOptionInput]
+    answer: str
+
+
+class BankCheckDuplicateResponse(BaseModel):
+    normalizedHash: str
+    existsInBank: bool
+
+
+class AdminAppendQuestionResponse(BaseModel):
+    sourceId: str
+    subjectSlug: str
+    examCode: str
+    fileName: str
+    ordinal: int
+    questionCount: int
+    warnings: list[str]
+
+
+class AdminDeleteQuestionResponse(BaseModel):
+    sourceId: str
+    subjectSlug: str
+    examCode: str
+    fileName: str
+    questionCount: int

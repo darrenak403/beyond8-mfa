@@ -216,5 +216,29 @@ class QuestionSourceService:
             db, slug=slug, source_id=source_id, ordinal=ordinal, stem=stem, options=options, answer=answer
         )
 
+    def check_bank_duplicate(self, db: Session, *, slug: str, stem: str, options: list[dict], answer: str):
+        return legacy.check_bank_duplicate(db, slug=slug, stem=stem, options=options, answer=answer)
+
+    async def check_bank_duplicate_async(
+        self, db: AsyncSession, *, slug: str, stem: str, options: list[dict], answer: str
+    ):
+        return await legacy.check_bank_duplicate_async(db, slug=slug, stem=stem, options=options, answer=answer)
+
+    def append_question_to_source(self, db: Session, *, slug: str, source_id: str, stem: str, options: list[dict], answer: str):
+        return legacy.append_question_to_source(db, slug=slug, source_id=source_id, stem=stem, options=options, answer=answer)
+
+    async def append_question_to_source_async(
+        self, db: AsyncSession, *, slug: str, source_id: str, stem: str, options: list[dict], answer: str
+    ):
+        return await legacy.append_question_to_source_async(
+            db, slug=slug, source_id=source_id, stem=stem, options=options, answer=answer
+        )
+
+    def delete_source_question(self, db: Session, *, slug: str, source_id: str, ordinal: int):
+        return legacy.delete_source_question(db, slug=slug, source_id=source_id, ordinal=ordinal)
+
+    async def delete_source_question_async(self, db: AsyncSession, *, slug: str, source_id: str, ordinal: int):
+        return await legacy.delete_source_question_async(db, slug=slug, source_id=source_id, ordinal=ordinal)
+
 
 question_source_service = QuestionSourceService()

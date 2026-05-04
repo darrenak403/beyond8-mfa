@@ -1278,6 +1278,136 @@ def patch_source_question(
     }
 
 
+def check_bank_duplicate(
+    db: Session,
+    *,
+    slug: str,
+    stem: str,
+    options: list[dict],
+    answer: str,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+    opt_list = [{"label": str(o.get("label", "")).strip(), "text": str(o.get("text", "")).strip()} for o in (options or [])]
+    parts = _normalize_question_dict_for_source((stem or "").strip(), opt_list, (answer or "").strip())
+    h = parts["normalized_hash"]
+    bank = _get_aggregated_bank_source(db, subject.id)
+    if bank is None:
+        return {"normalizedHash": h, "existsInBank": False}
+    existing = crud_question_source.list_questions_by_normalized_hash(db, source_id=bank.id, normalized_hash=h)
+    return {"normalizedHash": h, "existsInBank": len(existing) > 0}
+
+
+def append_question_to_source(
+    db: Session,
+    *,
+    slug: str,
+    source_id: str,
+    stem: str,
+    options: list[dict],
+    answer: str,
+) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=source_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SOURCE_NOT_FOUND", "Source not found for subject.")
+
+    stem_s = (stem or "").strip()
+    opt_list = [{"label": str(o.get("label", "")).strip(), "text": str(o.get("text", "")).strip()} for o in (options or [])]
+    answer_s = (answer or "").strip()
+    if not stem_s:
+        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "INVALID_QUESTION", "Question stem must not be empty.")
+
+    warnings: list[str] = []
+    if not opt_list:
+        warnings.append("Question has no options.")
+    if not answer_s:
+        warnings.append("Question has no explicit answer.")
+
+    parts = _normalize_question_dict_for_source(stem_s, opt_list, answer_s)
+    next_ord = crud_question_source.get_max_ordinal_for_source(db, source_id=source.id) + 1
+
+    crud_question_source.insert_question_row(
+        db,
+        source_id=source.id,
+        ordinal=next_ord,
+        stem=parts["stem"],
+        options_json=parts["options"],
+        answers_json=parts["answers"],
+        answer_text=parts["answer_text"],
+        normalized_hash=parts["normalized_hash"],
+    )
+    new_count = len(crud_question_source.list_source_questions_payload(db, source.id))
+    crud_question_source.update_source_question_stats(
+        db, source=source, question_count=new_count, warnings=warnings
+    )
+
+    if not _is_aggregated_bank_filename(source.file_name):
+        bank = _get_aggregated_bank_source(db, subject.id)
+        if bank is not None:
+            merge_deck_into_aggregated_bank(db, slug=subject.slug, deck_source_id=source.id, uploader_id=None)
+
+    subject_slug = subject.slug
+    _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
+    return {
+        "sourceId": source.id,
+        "subjectSlug": subject.slug,
+        "examCode": source.exam_code,
+        "fileName": source.file_name,
+        "ordinal": next_ord,
+        "questionCount": new_count,
+        "warnings": warnings,
+    }
+
+
+def delete_source_question(db: Session, *, slug: str, source_id: str, ordinal: int) -> dict:
+    subject = crud_question_source.get_subject_by_slug(db, slug)
+    if subject is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
+
+    source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=source_id)
+    if source is None:
+        raise _error(status.HTTP_404_NOT_FOUND, "SOURCE_NOT_FOUND", "Source not found for subject.")
+
+    rows = crud_question_source.list_source_questions_payload(db, source.id)
+    filtered = [r for r in rows if int(r.get("ordinal") or 0) != ordinal]
+    if len(filtered) == len(rows):
+        raise _error(status.HTTP_404_NOT_FOUND, "QUESTION_NOT_FOUND", "Question not found for this source.")
+
+    if not filtered:
+        crud_question_source.replace_source_questions(db, source_id=source.id, payload=[])
+        crud_question_source.update_source_question_stats(db, source=source, question_count=0, warnings=[])
+        if not _is_aggregated_bank_filename(source.file_name):
+            bank = _get_aggregated_bank_source(db, subject.id)
+            if bank is not None:
+                merge_deck_into_aggregated_bank(db, slug=subject.slug, deck_source_id=source.id, uploader_id=None)
+        subject_slug = subject.slug
+        _schedule_after_commit(db, lambda: (_invalidate_subject_catalog(), _invalidate_subject_reads(subject_slug)))
+        return {
+            "sourceId": source.id,
+            "subjectSlug": subject.slug,
+            "examCode": source.exam_code,
+            "fileName": source.file_name,
+            "questionCount": 0,
+        }
+
+    questions_for_replace = [
+        {"stem": r["stem"], "options": r["options"], "answer": r["answer"]} for r in filtered
+    ]
+    out = update_source_questions(db, slug, source_id, questions_for_replace)
+    return {
+        "sourceId": out["sourceId"],
+        "subjectSlug": out["subjectSlug"],
+        "examCode": out["examCode"],
+        "fileName": out["fileName"],
+        "questionCount": out["questionCount"],
+    }
+
+
 def update_source_from_markdown(
     db: Session,
     *,
@@ -1734,6 +1864,45 @@ async def patch_source_question_async(
             answer=answer,
         )
     )
+
+
+async def check_bank_duplicate_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    stem: str,
+    options: list[dict],
+    answer: str,
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: check_bank_duplicate(sync_db, slug=slug, stem=stem, options=options, answer=answer)
+    )
+
+
+async def append_question_to_source_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    source_id: str,
+    stem: str,
+    options: list[dict],
+    answer: str,
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: append_question_to_source(
+            sync_db, slug=slug, source_id=source_id, stem=stem, options=options, answer=answer
+        )
+    )
+
+
+async def delete_source_question_async(
+    db: AsyncSession,
+    *,
+    slug: str,
+    source_id: str,
+    ordinal: int,
+) -> dict:
+    return await db.run_sync(lambda sync_db: delete_source_question(sync_db, slug=slug, source_id=source_id, ordinal=ordinal))
 
 
 async def check_deck_answer_async(

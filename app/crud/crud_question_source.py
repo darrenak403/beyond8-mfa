@@ -319,6 +319,36 @@ class CRUDQuestionSource:
             for row in rows
         ]
 
+    def get_max_ordinal_for_source(self, db: Session, *, source_id: str) -> int:
+        v = db.execute(select(func.coalesce(func.max(Question.ordinal), 0)).where(Question.source_id == source_id)).scalar_one()
+        return int(v or 0)
+
+    def insert_question_row(
+        self,
+        db: Session,
+        *,
+        source_id: str,
+        ordinal: int,
+        stem: str,
+        options_json: list[dict],
+        answers_json: list[str],
+        answer_text: str,
+        normalized_hash: str,
+    ) -> Question:
+        q = Question(
+            source_id=source_id,
+            ordinal=ordinal,
+            stem=stem,
+            options_json=options_json,
+            answers_json=answers_json,
+            answer_text=answer_text,
+            normalized_hash=normalized_hash,
+            image_url=None,
+        )
+        db.add(q)
+        db.flush()
+        return q
+
     def count_questions_for_source(self, db: Session, source_id: str, *, q: str | None = None) -> int:
         stmt = select(func.count()).select_from(Question).where(Question.source_id == source_id)
         trimmed = (q or "").strip()

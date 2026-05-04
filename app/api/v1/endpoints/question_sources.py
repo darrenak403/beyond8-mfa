@@ -10,16 +10,21 @@ from app.db.session import get_async_db, get_db
 from app.models.user import User
 from app.schemas.api_response import ApiResponse, success_response
 from app.schemas.question_source import (
+    AdminAppendQuestionResponse,
+    AdminDeleteQuestionResponse,
     AdminEnsureSubjectRequest,
     AdminPatchQuestionRequest,
     AnswerCheckRequest,
     AnswerCheckResponse,
+    BankCheckDuplicateRequest,
+    BankCheckDuplicateResponse,
     DeckProgressUpdateRequest,
     DeckProgressResponse,
     DeckStatsUpdateRequest,
     MergeBankPreviewResponse,
     MergeIntoBankResponse,
     SourceQuestionBulkUpdateRequest,
+    SourceQuestionUpdateInput,
     SourceStateQuestion,
     SourceStateResponse,
     SubjectSummary,
@@ -76,6 +81,12 @@ update_source_questions = question_source_service.update_source_questions
 update_source_questions_async = question_source_service.update_source_questions_async
 patch_source_question = question_source_service.patch_source_question
 patch_source_question_async = question_source_service.patch_source_question_async
+check_bank_duplicate = question_source_service.check_bank_duplicate
+check_bank_duplicate_async = question_source_service.check_bank_duplicate_async
+append_question_to_source = question_source_service.append_question_to_source
+append_question_to_source_async = question_source_service.append_question_to_source_async
+delete_source_question = question_source_service.delete_source_question
+delete_source_question_async = question_source_service.delete_source_question_async
 
 
 @user_router.get(
@@ -186,6 +197,59 @@ async def admin_source_questions(
     return success_response(data=data)
 
 
+@admin_router.post(
+    "/admin/question-sources/subjects/{slug}/bank/check-duplicate",
+    response_model=ApiResponse[BankCheckDuplicateResponse],
+    summary="Admin: check whether question content already exists in aggregated bank (by normalized_hash)",
+)
+async def admin_bank_check_duplicate(
+    slug: str,
+    payload: BankCheckDuplicateRequest,
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+):
+    opts = [{"label": o.label, "text": o.text} for o in payload.options]
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await check_bank_duplicate_async(db, slug=slug, stem=payload.stem, options=opts, answer=payload.answer)
+    else:
+        data = check_bank_duplicate(db, slug=slug, stem=payload.stem, options=opts, answer=payload.answer)
+    return success_response(data=data)
+
+
+@admin_router.post(
+    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions",
+    response_model=ApiResponse[AdminAppendQuestionResponse],
+    summary="Admin: append one question to a source (does not replace full list)",
+)
+async def admin_append_source_question(
+    slug: str,
+    source_id: str,
+    payload: SourceQuestionUpdateInput,
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+):
+    opts = [{"label": o.label, "text": o.text} for o in payload.options]
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await append_question_to_source_async(
+            db,
+            slug=slug,
+            source_id=source_id,
+            stem=payload.stem,
+            options=opts,
+            answer=payload.answer,
+        )
+    else:
+        data = append_question_to_source(
+            db,
+            slug=slug,
+            source_id=source_id,
+            stem=payload.stem,
+            options=opts,
+            answer=payload.answer,
+        )
+    return success_response(data=data, message="Question appended successfully")
+
+
 @admin_router.put(
     "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions",
     response_model=ApiResponse[dict],
@@ -250,6 +314,25 @@ async def admin_patch_source_question_endpoint(
             answer=payload.answer,
         )
     return success_response(data=data, message="Question updated successfully")
+
+
+@admin_router.delete(
+    "/admin/question-sources/subjects/{slug}/sources/{source_id}/questions/{ordinal}",
+    response_model=ApiResponse[AdminDeleteQuestionResponse],
+    summary="Admin: delete one question by ordinal and renumber remaining questions",
+)
+async def admin_delete_source_question(
+    slug: str,
+    source_id: str,
+    ordinal: int = Path(ge=1),
+    db: Session = Depends(get_async_db),
+    _: User = Depends(get_current_admin),
+):
+    if settings.enable_async_database and isinstance(db, AsyncSession):
+        data = await delete_source_question_async(db, slug=slug, source_id=source_id, ordinal=ordinal)
+    else:
+        data = delete_source_question(db, slug=slug, source_id=source_id, ordinal=ordinal)
+    return success_response(data=data, message="Question deleted successfully")
 
 
 @user_router.get("/subjects/{slug}/source-state", response_model=ApiResponse[SourceStateResponse])

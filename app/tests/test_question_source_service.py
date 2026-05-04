@@ -786,3 +786,123 @@ def test_update_source_questions_skips_merge_when_no_bank(monkeypatch) -> None:
         [{"stem": "Q", "options": [{"label": "A", "text": "a"}], "answer": "A"}],
     )
     assert merge_calls == []
+
+
+def test_check_bank_duplicate_no_bank(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: None)
+
+    out = question_source_service.check_bank_duplicate(
+        Mock(),
+        slug="mln111",
+        stem="Stem text",
+        options=[{"label": "A", "text": "opt"}],
+        answer="A",
+    )
+    assert out["existsInBank"] is False
+    assert out["normalizedHash"].startswith("sha256:")
+
+
+def test_check_bank_duplicate_found(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    bank = SimpleNamespace(id="bank-1", file_name="cau-hoi-tong-hop.md")
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.list_questions_by_normalized_hash.return_value = [Mock()]
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: bank)
+
+    out = question_source_service.check_bank_duplicate(
+        Mock(),
+        slug="mln111",
+        stem="Stem text",
+        options=[{"label": "A", "text": "opt"}],
+        answer="A",
+    )
+    assert out["existsInBank"] is True
+
+
+def test_append_question_inserts_and_merges_when_bank_present(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="MLN111 - FA 2024 - FE.md", exam_code="E")
+    bank = SimpleNamespace(id="bank-1")
+    merge_calls: list[int] = []
+
+    def fake_merge(*_a, **_k):
+        merge_calls.append(1)
+
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    fake_crud.get_max_ordinal_for_source.return_value = 5
+    fake_crud.list_source_questions_payload.return_value = [{}] * 6
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "_get_aggregated_bank_source", lambda _db, _sid: bank)
+    monkeypatch.setattr(question_source_service, "merge_deck_into_aggregated_bank", fake_merge)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    out = question_source_service.append_question_to_source(
+        Mock(),
+        slug="mln111",
+        source_id="deck-1",
+        stem="Added stem",
+        options=[{"label": "A", "text": "x"}],
+        answer="A",
+    )
+    assert out["ordinal"] == 6
+    assert out["questionCount"] == 6
+    fake_crud.insert_question_row.assert_called_once()
+    assert merge_calls == [1]
+
+
+def test_delete_source_question_replaces_remaining(monkeypatch) -> None:
+    subject = SimpleNamespace(id="sub-1", slug="mln111")
+    deck = SimpleNamespace(id="deck-1", file_name="deck.md", exam_code="E")
+    rows = [
+        {
+            "ordinal": 1,
+            "stem": "First",
+            "options": [{"label": "A", "text": "a"}],
+            "answer": "A",
+            "answers": ["A"],
+            "imageUrl": None,
+            "normalized_hash": "sha256:aa",
+        },
+        {
+            "ordinal": 2,
+            "stem": "Second",
+            "options": [{"label": "A", "text": "b"}],
+            "answer": "A",
+            "answers": ["A"],
+            "imageUrl": None,
+            "normalized_hash": "sha256:bb",
+        },
+    ]
+    captured: list[list[dict[str, str]]] = []
+
+    def fake_update(db, slug, source_id, questions):
+        captured.append(questions)
+        return {
+            "sourceId": source_id,
+            "subjectSlug": slug,
+            "examCode": "E",
+            "fileName": "deck.md",
+            "questionCount": len(questions),
+            "warnings": [],
+        }
+
+    fake_crud = Mock()
+    fake_crud.get_subject_by_slug.return_value = subject
+    fake_crud.get_source_by_id.return_value = deck
+    fake_crud.list_source_questions_payload.return_value = rows
+    monkeypatch.setattr(question_source_service, "crud_question_source", fake_crud)
+    monkeypatch.setattr(question_source_service, "update_source_questions", fake_update)
+    monkeypatch.setattr(question_source_service, "_schedule_after_commit", lambda _db, _cb: None)
+
+    question_source_service.delete_source_question(Mock(), slug="mln111", source_id="deck-1", ordinal=1)
+    assert len(captured) == 1
+    assert len(captured[0]) == 1
+    assert captured[0][0]["stem"] == "Second"
