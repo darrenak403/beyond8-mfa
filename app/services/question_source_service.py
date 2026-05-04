@@ -804,17 +804,27 @@ def get_deck_questions(db: Session, slug: str, deck_id: str) -> list[dict]:
     return payload
 
 
-def get_deck_questions_page(db: Session, slug: str, deck_id: str, *, page: int, limit: int) -> dict:
-    """Paginated deck questions (no full-deck Redis cache; uses DB slice + subject question_count for total)."""
+def get_deck_questions_page(
+    db: Session, slug: str, deck_id: str, *, page: int, limit: int, q: str | None = None
+) -> dict:
+    """Paginated deck questions (no full-deck Redis cache; uses DB slice + subject question_count for total).
+
+    Optional ``q`` filters by substring (case-insensitive) on stem, answer text, or options/answers JSON text.
+    """
     normalized_slug = slug.lower()
-    subject = crud_question_source.get_subject_by_slug(db, slug)
+    subject = crud_question_source.get_subject_by_slug(db, normalized_slug)
     if subject is None:
         raise _error(status.HTTP_404_NOT_FOUND, "SUBJECT_NOT_FOUND", "Subject not found.")
     source = crud_question_source.get_source_by_id(db, subject_id=subject.id, source_id=deck_id)
     if source is None:
         raise _error(status.HTTP_404_NOT_FOUND, "DECK_NOT_FOUND", "Deck not found for subject.")
 
-    total = int(source.question_count or 0)
+    search_q = (q or "").strip()
+    if search_q:
+        total = crud_question_source.count_questions_for_source(db, source.id, q=search_q)
+    else:
+        total = int(source.question_count or 0)
+
     if total <= 0:
         total_pages = 0
         items: list[dict] = []
@@ -822,18 +832,22 @@ def get_deck_questions_page(db: Session, slug: str, deck_id: str, *, page: int, 
         total_pages = max(1, math.ceil(total / limit))
         offset = (page - 1) * limit
         slice_rows = crud_question_source.list_source_questions_payload_slice(
-            db, source.id, offset=offset, limit=limit
+            db,
+            source.id,
+            offset=offset,
+            limit=limit,
+            q=search_q if search_q else None,
         )
         items = [
             {
-                "id": offset + idx + 1,
+                "id": item["ordinal"],
                 "stem": item["stem"],
                 "options": item["options"],
                 "answer": item["answer"],
                 "answerCount": _answer_count_from_payload(item),
                 "imageUrl": item.get("imageUrl"),
             }
-            for idx, item in enumerate(slice_rows)
+            for item in slice_rows
         ]
 
     has_next = total > 0 and page < total_pages
@@ -1685,8 +1699,12 @@ async def get_subject_decks_async(db: AsyncSession, slug: str, *, user_id: str |
     return await db.run_sync(lambda sync_db: get_subject_decks(sync_db, slug, user_id=user_id))
 
 
-async def get_deck_questions_page_async(db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int) -> dict:
-    return await db.run_sync(lambda sync_db: get_deck_questions_page(sync_db, slug, deck_id, page=page, limit=limit))
+async def get_deck_questions_page_async(
+    db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int, q: str | None = None
+) -> dict:
+    return await db.run_sync(
+        lambda sync_db: get_deck_questions_page(sync_db, slug, deck_id, page=page, limit=limit, q=q)
+    )
 
 
 async def update_source_questions_async(

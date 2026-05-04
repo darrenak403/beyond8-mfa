@@ -1,13 +1,24 @@
 import json
 import uuid
 
-from sqlalchemy import func, insert, or_, select, text
+from sqlalchemy import Text, cast, func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.question import Question
 from app.models.question_source import ParseStatus, QuestionSource
 from app.models.subject import Subject
+
+
+def _question_search_or_conditions(trimmed: str):
+    """ILIKE match on stem, answer line, and JSON text for options / answers."""
+    pat = f"%{trimmed}%"
+    return or_(
+        Question.stem.ilike(pat),
+        Question.answer_text.ilike(pat),
+        cast(Question.options_json, Text).ilike(pat),
+        cast(Question.answers_json, Text).ilike(pat),
+    )
 
 
 class CRUDQuestionSource:
@@ -308,24 +319,32 @@ class CRUDQuestionSource:
             for row in rows
         ]
 
-    def list_source_questions_payload_slice(self, db: Session, source_id: str, *, offset: int, limit: int) -> list[dict]:
-        """Ordered slice by ordinal for pagination (offset/limit)."""
+    def count_questions_for_source(self, db: Session, source_id: str, *, q: str | None = None) -> int:
+        stmt = select(func.count()).select_from(Question).where(Question.source_id == source_id)
+        trimmed = (q or "").strip()
+        if trimmed:
+            stmt = stmt.where(_question_search_or_conditions(trimmed))
+        return int(db.execute(stmt).scalar_one() or 0)
+
+    def list_source_questions_payload_slice(
+        self, db: Session, source_id: str, *, offset: int, limit: int, q: str | None = None
+    ) -> list[dict]:
+        """Ordered slice by ordinal for pagination (offset/limit). Optional ``q`` filters stem/answers/options text."""
         if limit <= 0:
             return []
-        rows = db.execute(
-            select(
-                Question.ordinal,
-                Question.stem,
-                Question.options_json,
-                Question.answer_text,
-                Question.answers_json,
-                Question.image_url,
-            )
-            .where(Question.source_id == source_id)
-            .order_by(Question.ordinal.asc())
-            .offset(max(0, offset))
-            .limit(limit)
-        ).all()
+        trimmed = (q or "").strip()
+        stmt = select(
+            Question.ordinal,
+            Question.stem,
+            Question.options_json,
+            Question.answer_text,
+            Question.answers_json,
+            Question.image_url,
+        ).where(Question.source_id == source_id)
+        if trimmed:
+            stmt = stmt.where(_question_search_or_conditions(trimmed))
+        stmt = stmt.order_by(Question.ordinal.asc()).offset(max(0, offset)).limit(limit)
+        rows = db.execute(stmt).all()
         return [
             {
                 "ordinal": int(row.ordinal or 0),

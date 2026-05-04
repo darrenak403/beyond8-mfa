@@ -172,11 +172,17 @@ async def admin_source_questions(
         le=MAX_PAGE_SIZE,
         description="Page size (max 100; same shape as user deck questions).",
     ),
+    q: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Tìm trong nội dung câu, đáp án, hoặc text JSON lựa chọn (không phân biệt hoa thường).",
+    ),
 ):
     if settings.enable_async_database and isinstance(db, AsyncSession):
-        data = await get_deck_questions_page_async(db, slug, source_id, page=page, limit=limit)
+        data = await get_deck_questions_page_async(db, slug, source_id, page=page, limit=limit, q=q)
     else:
-        data = get_deck_questions_page(db, slug, source_id, page=page, limit=limit)
+        data = get_deck_questions_page(db, slug, source_id, page=page, limit=limit, q=q)
     return success_response(data=data)
 
 

@@ -56,11 +56,15 @@ class QuestionSourceService:
     def get_deck_questions(self, db: Session, slug: str, deck_id: str):
         return legacy.get_deck_questions(db, slug, deck_id)
 
-    def get_deck_questions_page(self, db: Session, slug: str, deck_id: str, *, page: int, limit: int):
-        return legacy.get_deck_questions_page(db, slug, deck_id, page=page, limit=limit)
+    def get_deck_questions_page(
+        self, db: Session, slug: str, deck_id: str, *, page: int, limit: int, q: str | None = None
+    ):
+        return legacy.get_deck_questions_page(db, slug, deck_id, page=page, limit=limit, q=q)
 
-    async def get_deck_questions_page_async(self, db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int):
-        return await legacy.get_deck_questions_page_async(db, slug, deck_id, page=page, limit=limit)
+    async def get_deck_questions_page_async(
+        self, db: AsyncSession, slug: str, deck_id: str, *, page: int, limit: int, q: str | None = None
+    ):
+        return await legacy.get_deck_questions_page_async(db, slug, deck_id, page=page, limit=limit, q=q)
 
     def check_deck_answer(self, db: Session, *, slug: str, deck_id: str, question_id: int, selected_answer: str):
         return legacy.check_deck_answer(

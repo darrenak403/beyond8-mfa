@@ -443,7 +443,7 @@ def test_admin_get_source_questions_ok(monkeypatch):
     _with_admin()
     try:
 
-        def _page(_db, slug, source_id, page, limit):
+        def _page(_db, slug, source_id, page, limit, q=None):
             assert slug == "mln111"
             assert source_id == "s1"
             return {
@@ -465,7 +465,11 @@ def test_admin_get_source_questions_ok(monkeypatch):
                 "hasPrevious": False,
             }
 
+        async def _page_async(_db, slug, source_id, *, page, limit, q=None):
+            return _page(_db, slug, source_id, page, limit, q=q)
+
         monkeypatch.setattr(qs, "get_deck_questions_page", _page)
+        monkeypatch.setattr(qs, "get_deck_questions_page_async", _page_async)
         response = _run("GET", "/api/v1/admin/question-sources/subjects/mln111/sources/s1/questions")
         assert response.status_code == 200
         data = response.json()["data"]
