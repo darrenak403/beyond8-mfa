@@ -19,6 +19,7 @@ class Question(Base):
     answers_json: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     answer_text: Mapped[str] = mapped_column(Text, nullable=False)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     normalized_hash: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -533,7 +533,16 @@ def get_subject_bank_page(db: Session, slug: str, *, page: int, limit: int) -> d
     total = int(source.question_count or 0)
     offset = (page - 1) * limit
     slice_rows = crud_question_source.list_source_questions_payload_slice(db, source.id, offset=offset, limit=limit)
-    items = [{"id": offset + idx + 1, "stem": item["stem"], "options": item["options"], "answer": item["answer"]} for idx, item in enumerate(slice_rows)]
+    items = [
+        {
+            "id": offset + idx + 1,
+            "stem": item["stem"],
+            "options": item["options"],
+            "answer": item["answer"],
+            "explanation": item.get("explanation"),
+        }
+        for idx, item in enumerate(slice_rows)
+    ]
     total_pages = 0 if total == 0 else max(1, math.ceil(total / limit))
     return {
         "items": items,

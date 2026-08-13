@@ -71,6 +71,7 @@ class CRUDQuestionSource:
                     answers_json JSONB NOT NULL DEFAULT '[]'::jsonb,
                     answer_text TEXT NOT NULL,
                     image_url TEXT,
+                    explanation TEXT,
                     normalized_hash VARCHAR(71) NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -135,6 +136,12 @@ class CRUDQuestionSource:
             text(
                 "ALTER TABLE questions "
                 "ADD COLUMN IF NOT EXISTS image_url TEXT"
+            )
+        )
+        db.execute(
+            text(
+                "ALTER TABLE questions "
+                "ADD COLUMN IF NOT EXISTS explanation TEXT"
             )
         )
 
@@ -301,6 +308,7 @@ class CRUDQuestionSource:
                 Question.answer_text,
                 Question.answers_json,
                 Question.image_url,
+                Question.explanation,
                 Question.normalized_hash,
             )
             .where(Question.source_id == source_id)
@@ -314,6 +322,7 @@ class CRUDQuestionSource:
                 "answer": row.answer_text,
                 "answers": row.answers_json or [],
                 "imageUrl": row.image_url,
+                "explanation": row.explanation,
                 "normalized_hash": row.normalized_hash,
             }
             for row in rows
@@ -370,6 +379,7 @@ class CRUDQuestionSource:
             Question.answer_text,
             Question.answers_json,
             Question.image_url,
+            Question.explanation,
         ).where(Question.source_id == source_id)
         if trimmed:
             stmt = stmt.where(_question_search_or_conditions(trimmed))
@@ -383,6 +393,7 @@ class CRUDQuestionSource:
                 "answer": row.answer_text,
                 "answers": row.answers_json or [],
                 "imageUrl": row.image_url,
+                "explanation": row.explanation,
             }
             for row in rows
         ]
