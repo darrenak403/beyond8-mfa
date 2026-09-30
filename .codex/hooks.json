@@ -1,0 +1,77 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/observe.py' pre",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/suggest_compact.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/observe.py' post",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/build-check.py'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/pre-compact.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/session-start.py'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python '/Users/ngothanhdat/Documents/CODE/beyond8-quiz/fe/beyond8-mfa/.codex/hooks/plan-context.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
