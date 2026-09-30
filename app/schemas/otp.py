@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -28,3 +30,8 @@ class CourseAccessStatusResponse(BaseModel):
     active: bool
     user_id: str
     email: str
+
+
+class CourseAccessReissueResponse(BaseModel):
+    token: str
+    expires_at: datetime | None = None
