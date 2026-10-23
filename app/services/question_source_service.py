@@ -563,6 +563,7 @@ def get_subject_bank_progress(db: Session, *, slug: str, user_id: str) -> dict:
     sources = crud_question_source.list_sources_by_subject(db, subject.id)
     if not sources:
         return {
+            "deckId": None,
             "totalQuestions": 0,
             "lastQuestion": 0,
             "resumeQuestion": 0,
@@ -597,6 +598,8 @@ def get_subject_bank_progress(db: Session, *, slug: str, user_id: str) -> dict:
 
     updated_at = stats.get("updated_at")
     return {
+        # Id nguồn ngân hàng — FE dùng để lưu tiến trình học bài qua PUT /decks/{deckId}/progress
+        "deckId": source.id,
         "totalQuestions": total_questions,
         "lastQuestion": raw_current_question,
         "resumeQuestion": resume_question,
